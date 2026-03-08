@@ -1,3 +1,26 @@
+const CHANNEL_PREFIX_ALLOWLIST = new Set([
+  "telegram",
+  "whatsapp",
+  "signal",
+  "discord",
+  "slack",
+  "irc",
+  "imessage",
+  "googlechat",
+  "feishu",
+  "nostr",
+  "msteams",
+  "mattermost",
+  "nextcloud-talk",
+  "matrix",
+  "bluebubbles",
+  "line",
+  "zalo",
+  "zalouser",
+  "synology-chat",
+  "tlon",
+]);
+
 function normalizeConversationId(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -28,6 +51,17 @@ export function resolveConversationIdFromTargets(params: {
       }
       continue;
     }
+
+    const prefixedTarget = target.match(/^([a-z][a-z0-9_-]*):(.*)$/i);
+    if (prefixedTarget) {
+      const prefix = prefixedTarget[1]?.trim().toLowerCase();
+      const suffix = normalizeConversationId(prefixedTarget[2]);
+      if (prefix && suffix && CHANNEL_PREFIX_ALLOWLIST.has(prefix)) {
+        return suffix;
+      }
+      continue;
+    }
+
     const mentionMatch = target.match(/^<#(\d+)>$/);
     if (mentionMatch?.[1]) {
       return mentionMatch[1];

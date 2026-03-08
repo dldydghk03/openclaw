@@ -301,6 +301,57 @@ describe("spawnAcpDirect", () => {
     );
   });
 
+  it("attaches thread-mode ACP spawns to the current Telegram conversation when adapters are unavailable", async () => {
+    hoisted.sessionBindingCapabilitiesMock.mockReturnValue({
+      adapterAvailable: false,
+      bindSupported: false,
+      unbindSupported: false,
+      placements: [],
+    });
+
+    const result = await spawnAcpDirect(
+      {
+        task: "Patch routing bug",
+        agentId: "codex",
+        mode: "session",
+        thread: true,
+      },
+      {
+        agentSessionKey: "agent:main:telegram:direct:6848608231",
+        agentChannel: "telegram",
+        agentAccountId: "default",
+        agentTo: "6848608231",
+      },
+    );
+
+    expect(result.status).toBe("accepted");
+    expect(result.childSessionKey).toBe("agent:main:telegram:direct:6848608231");
+    expect(hoisted.sessionBindingBindMock).not.toHaveBeenCalled();
+    const agentCall = hoisted.callGatewayMock.mock.calls
+      .map((call: unknown[]) => call[0] as { method?: string; params?: Record<string, unknown> })
+      .find((request) => request.method === "agent");
+    expect(agentCall?.params?.sessionKey).toBe("agent:main:telegram:direct:6848608231");
+  });
+
+  it("fails thread-mode Telegram ACP spawn when requester session key is missing", async () => {
+    const result = await spawnAcpDirect(
+      {
+        task: "Patch routing bug",
+        agentId: "codex",
+        mode: "session",
+        thread: true,
+      },
+      {
+        agentChannel: "telegram",
+        agentAccountId: "default",
+        agentTo: "6848608231",
+      },
+    );
+
+    expect(result.status).toBe("error");
+    expect(result.error).toContain("requires an agentSessionKey context");
+  });
+
   it("rejects disallowed ACP agents", async () => {
     hoisted.state.cfg = {
       ...hoisted.state.cfg,

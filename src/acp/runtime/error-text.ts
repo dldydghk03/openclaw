@@ -14,9 +14,15 @@ function resolveAcpRuntimeErrorNextStep(error: AcpRuntimeError): string | undefi
     return "Use `/acp status` to inspect options and pass valid values.";
   }
   if (error.code === "ACP_BACKEND_UNSUPPORTED_CONTROL") {
+    if (error.message.includes('config key "timeout"')) {
+      return "This ACP backend does not support per-session timeout config. Use plugin-level timeout (plugins.entries.acpx.config.timeoutSeconds) instead.";
+    }
     return "This backend does not support that control; use a supported command.";
   }
   if (error.code === "ACP_TURN_FAILED") {
+    if (error.message.includes("Permission prompt unavailable in non-interactive mode")) {
+      return "Run `/acp permissions never <session-key>` (mapped to full-access mode on codex ACP), then retry.";
+    }
     return "Retry, or use `/acp cancel` and send the message again.";
   }
   return undefined;

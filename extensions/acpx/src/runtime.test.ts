@@ -503,6 +503,7 @@ describe("AcpxRuntime", () => {
     expect(capabilities.controls).toContain("session/set_mode");
     expect(capabilities.controls).toContain("session/set_config_option");
     expect(capabilities.controls).toContain("session/status");
+    expect(capabilities.configOptionKeys).toEqual(["model", "mode"]);
 
     await runtime.setMode({
       handle,

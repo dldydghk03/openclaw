@@ -45,6 +45,10 @@ const ACPX_RUNTIME_HANDLE_PREFIX = "acpx:v1:";
 const DEFAULT_AGENT_FALLBACK = "codex";
 const ACPX_CAPABILITIES: AcpRuntimeCapabilities = {
   controls: ["session/set_mode", "session/set_config_option", "session/status"],
+  // codex-acp currently exposes only model + mode as mutable config options.
+  // Advertising these keys lets OpenClaw fail fast on unsupported keys like
+  // approval_policy/timeout instead of surfacing generic "Invalid params".
+  configOptionKeys: ["model", "mode"],
 };
 
 export function encodeAcpxRuntimeHandleState(state: AcpxHandleState): string {

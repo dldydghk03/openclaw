@@ -31,6 +31,27 @@ describe("resolveConversationIdFromTargets", () => {
     expect(resolved).toBe("1475250310120214812");
   });
 
+  it("extracts conversation ids from telegram:<id> targets", () => {
+    const resolved = resolveConversationIdFromTargets({
+      targets: ["telegram:6848608231"],
+    });
+    expect(resolved).toBe("6848608231");
+  });
+
+  it("supports negative Telegram supergroup ids in prefixed targets", () => {
+    const resolved = resolveConversationIdFromTargets({
+      targets: ["telegram:-100249586642"],
+    });
+    expect(resolved).toBe("-100249586642");
+  });
+
+  it("ignores non-channel prefixes", () => {
+    const resolved = resolveConversationIdFromTargets({
+      targets: ["session:abc", "user:alice"],
+    });
+    expect(resolved).toBeUndefined();
+  });
+
   it("returns undefined for non-channel targets", () => {
     const resolved = resolveConversationIdFromTargets({
       targets: ["user:alice", "general"],
