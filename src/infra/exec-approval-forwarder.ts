@@ -33,6 +33,8 @@ type PendingApproval = {
   timeoutId: NodeJS.Timeout | null;
 };
 
+const TELEGRAM_CALLBACK_DATA_MAX_BYTES = 64;
+
 export type ExecApprovalForwarder = {
   handleRequested: (request: ExecApprovalRequest) => Promise<boolean>;
   handleResolved: (resolved: ExecApprovalResolved) => Promise<void>;
@@ -216,6 +218,53 @@ function buildExpiredMessage(request: ExecApprovalRequest) {
   return `⏱️ Exec approval expired. ID: ${request.id}`;
 }
 
+function buildApproveCommand(params: { id: string; decision: ExecApprovalDecision }): string {
+  return `/approve ${params.id} ${params.decision}`;
+}
+
+function buildTelegramApprovalButtons(request: ExecApprovalRequest) {
+  const allowOnce = buildApproveCommand({ id: request.id, decision: "allow-once" });
+  const allowAlways = buildApproveCommand({ id: request.id, decision: "allow-always" });
+  const deny = buildApproveCommand({ id: request.id, decision: "deny" });
+  const callbackPayloads = [allowOnce, allowAlways, deny];
+  const exceedsCallbackLimit = callbackPayloads.some(
+    (value) => Buffer.byteLength(value, "utf8") > TELEGRAM_CALLBACK_DATA_MAX_BYTES,
+  );
+  if (exceedsCallbackLimit) {
+    return undefined;
+  }
+  return [
+    [
+      { text: "✅ Allow once", callback_data: allowOnce },
+      { text: "🧠 Always allow", callback_data: allowAlways },
+    ],
+    [{ text: "❌ Deny", callback_data: deny }],
+  ];
+}
+
+function buildForwardPayload(params: {
+  target: ForwardTarget;
+  text: string;
+  request?: ExecApprovalRequest;
+}) {
+  const channel = normalizeMessageChannel(params.target.channel) ?? params.target.channel;
+  if (channel !== "telegram" || !params.request) {
+    return { text: params.text };
+  }
+  const buttons = buildTelegramApprovalButtons(params.request);
+  if (!buttons) {
+    return { text: params.text };
+  }
+  return {
+    text: params.text,
+    channelData: {
+      telegram: {
+        buttons,
+      },
+    },
+  };
+}
+
 function normalizeTurnSourceChannel(value?: string | null): DeliverableMessageChannel | undefined {
   const normalized = value ? normalizeMessageChannel(value) : undefined;
   return normalized && isDeliverableMessageChannel(normalized) ? normalized : undefined;
@@ -264,6 +313,7 @@ async function deliverToTargets(params: {
   targets: ForwardTarget[];
   text: string;
   deliver: typeof deliverOutboundPayloads;
+  request?: ExecApprovalRequest;
   shouldSend?: () => boolean;
 }) {
   const deliveries = params.targets.map(async (target) => {
@@ -281,7 +331,13 @@ async function deliverToTargets(params: {
         to: target.to,
         accountId: target.accountId,
         threadId: target.threadId,
-        payloads: [{ text: params.text }],
+        payloads: [
+          buildForwardPayload({
+            target,
+            text: params.text,
+            request: params.request,
+          }),
+        ],
       });
     } catch (err) {
       log.error(`exec approvals: failed to deliver to ${channel}:${target.to}: ${String(err)}`);
@@ -384,6 +440,7 @@ export function createExecApprovalForwarder(
       cfg,
       targets: filteredTargets,
       text,
+      request,
       deliver,
       shouldSend: () => pending.get(request.id) === pendingEntry,
     }).catch((err) => {

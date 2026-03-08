@@ -275,6 +275,13 @@ Actions:
 You can forward exec approval prompts to any chat channel (including plugin channels) and approve
 them with `/approve`. This uses the normal outbound delivery pipeline.
 
+Telegram note:
+
+- Forwarded approval prompts include inline buttons (`Allow once`, `Always allow`, `Deny`) when
+  callback payload size allows it.
+- Button taps resolve to `/approve <id> ...` commands.
+- Fallback always remains available: run `/approve <id> allow-once|allow-always|deny` manually.
+
 Config:
 
 ```json5

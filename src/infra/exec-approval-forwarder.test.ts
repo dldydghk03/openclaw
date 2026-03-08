@@ -27,6 +27,15 @@ function getFirstDeliveryText(deliver: ReturnType<typeof vi.fn>): string {
   return firstCall?.payloads?.[0]?.text ?? "";
 }
 
+function getFirstDeliveryPayload(
+  deliver: ReturnType<typeof vi.fn>,
+): { text?: string; channelData?: Record<string, unknown> } | undefined {
+  const firstCall = deliver.mock.calls[0]?.[0] as
+    | { payloads?: Array<{ text?: string; channelData?: Record<string, unknown> }> }
+    | undefined;
+  return firstCall?.payloads?.[0];
+}
+
 const TARGETS_CFG = {
   approvals: {
     exec: {
@@ -156,6 +165,45 @@ describe("exec approval forwarder", () => {
     ).resolves.toBe(true);
 
     expect(getFirstDeliveryText(deliver)).toContain("Command:\n```\necho `uname`\necho done\n```");
+  });
+
+  it("adds Telegram inline approval buttons for forwarded approval requests", async () => {
+    vi.useFakeTimers();
+    const { deliver, forwarder } = createForwarder({ cfg: TARGETS_CFG });
+
+    await expect(forwarder.handleRequested(baseRequest)).resolves.toBe(true);
+
+    const payload = getFirstDeliveryPayload(deliver);
+    expect(payload).toBeDefined();
+    expect(payload?.channelData).toEqual({
+      telegram: {
+        buttons: [
+          [
+            { text: "✅ Allow once", callback_data: "/approve req-1 allow-once" },
+            { text: "🧠 Always allow", callback_data: "/approve req-1 allow-always" },
+          ],
+          [{ text: "❌ Deny", callback_data: "/approve req-1 deny" }],
+        ],
+      },
+    });
+  });
+
+  it("falls back to text-only forwarding when Telegram callback_data would exceed limits", async () => {
+    vi.useFakeTimers();
+    const { deliver, forwarder } = createForwarder({ cfg: TARGETS_CFG });
+    const longId = "a".repeat(80);
+
+    await expect(
+      forwarder.handleRequested({
+        ...baseRequest,
+        id: longId,
+      }),
+    ).resolves.toBe(true);
+
+    const payload = getFirstDeliveryPayload(deliver);
+    expect(payload).toBeDefined();
+    expect(payload?.channelData).toBeUndefined();
+    expect(payload?.text).toContain(`ID: ${longId}`);
   });
 
   it("returns false when forwarding is disabled", async () => {
