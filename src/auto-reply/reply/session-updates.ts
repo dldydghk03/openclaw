@@ -13,6 +13,54 @@ import {
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
 import { drainSystemEventEntries } from "../../infra/system-events.js";
 
+function hasSkillSnapshotChanged(params: {
+  current?: SessionEntry["skillsSnapshot"];
+  next?: SessionEntry["skillsSnapshot"];
+}): boolean {
+  const current = params.current;
+  const next = params.next;
+  if (!current) {
+    return Boolean(next);
+  }
+  if (!next) {
+    return false;
+  }
+  if ((current.version ?? 0) !== (next.version ?? 0)) {
+    return true;
+  }
+  const currentFilter = current.skillFilter ?? [];
+  const nextFilter = next.skillFilter ?? [];
+  if (currentFilter.length !== nextFilter.length) {
+    return true;
+  }
+  for (let index = 0; index < currentFilter.length; index += 1) {
+    if (currentFilter[index] !== nextFilter[index]) {
+      return true;
+    }
+  }
+  const currentSkills = current.skills.map((skill) => skill.name);
+  const nextSkills = next.skills.map((skill) => skill.name);
+  if (currentSkills.length !== nextSkills.length) {
+    return true;
+  }
+  for (let index = 0; index < currentSkills.length; index += 1) {
+    if (currentSkills[index] !== nextSkills[index]) {
+      return true;
+    }
+  }
+  const currentResolved = (current.resolvedSkills ?? []).map((skill) => skill.name);
+  const nextResolved = (next.resolvedSkills ?? []).map((skill) => skill.name);
+  if (currentResolved.length !== nextResolved.length) {
+    return true;
+  }
+  for (let index = 0; index < currentResolved.length; index += 1) {
+    if (currentResolved[index] !== nextResolved[index]) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function prependSystemEvents(params: {
   cfg: OpenClawConfig;
   sessionKey: string;
@@ -155,7 +203,9 @@ export async function ensureSkillSnapshot(params: {
   const snapshotVersion = getSkillsSnapshotVersion(workspaceDir);
   ensureSkillsWatcher({ workspaceDir, config: cfg });
   const shouldRefreshSnapshot =
-    snapshotVersion > 0 && (nextEntry?.skillsSnapshot?.version ?? 0) < snapshotVersion;
+    snapshotVersion > 0
+      ? (nextEntry?.skillsSnapshot?.version ?? 0) < snapshotVersion
+      : !isFirstTurnInSession;
 
   if (isFirstTurnInSession && sessionStore && sessionKey) {
     const current = nextEntry ??
@@ -188,13 +238,22 @@ export async function ensureSkillSnapshot(params: {
     systemSent = true;
   }
 
-  const skillsSnapshot = shouldRefreshSnapshot
+  const refreshedSkillsSnapshot = shouldRefreshSnapshot
     ? buildWorkspaceSkillSnapshot(workspaceDir, {
         config: cfg,
         skillFilter,
         eligibility: { remote: remoteEligibility },
         snapshotVersion,
       })
+    : undefined;
+  const snapshotChanged = hasSkillSnapshotChanged({
+    current: nextEntry?.skillsSnapshot,
+    next: refreshedSkillsSnapshot,
+  });
+  const skillsSnapshot = refreshedSkillsSnapshot
+    ? snapshotChanged
+      ? refreshedSkillsSnapshot
+      : (nextEntry?.skillsSnapshot ?? refreshedSkillsSnapshot)
     : (nextEntry?.skillsSnapshot ??
       (isFirstTurnInSession
         ? undefined
@@ -209,7 +268,7 @@ export async function ensureSkillSnapshot(params: {
     sessionStore &&
     sessionKey &&
     !isFirstTurnInSession &&
-    (!nextEntry?.skillsSnapshot || shouldRefreshSnapshot)
+    (!nextEntry?.skillsSnapshot || snapshotChanged)
   ) {
     const current = nextEntry ?? {
       sessionId: sessionId ?? crypto.randomUUID(),
