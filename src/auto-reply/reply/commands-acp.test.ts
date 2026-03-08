@@ -101,6 +101,7 @@ vi.mock("../../discord/monitor/gateway-plugin.js", () => ({
 const { handleAcpCommand } = await import("./commands-acp.js");
 const { buildCommandTestParams } = await import("./commands-spawn.test-harness.js");
 const { __testing: acpManagerTesting } = await import("../../acp/control-plane/manager.js");
+const { __testing: acpTargetsTesting } = await import("./commands-acp/targets.js");
 
 type FakeBinding = {
   bindingId: string;
@@ -172,9 +173,23 @@ function createDiscordParams(commandBody: string, cfg: OpenClawConfig = baseCfg)
   return params;
 }
 
+function createTelegramParams(commandBody: string, cfg: OpenClawConfig = baseCfg) {
+  const params = buildCommandTestParams(commandBody, cfg, {
+    Provider: "telegram",
+    Surface: "telegram",
+    OriginatingChannel: "telegram",
+    OriginatingTo: "6848608231",
+    AccountId: "default",
+  });
+  params.command.senderId = "6848608231";
+  params.sessionKey = "agent:main:telegram:direct:6848608231";
+  return params;
+}
+
 describe("/acp command", () => {
   beforeEach(() => {
     acpManagerTesting.resetAcpSessionManagerForTests();
+    acpTargetsTesting.clearRecentAcpTargetCache();
     hoisted.listAcpSessionEntriesMock.mockReset().mockResolvedValue([]);
     hoisted.callGatewayMock.mockReset().mockResolvedValue({ ok: true });
     hoisted.readAcpSessionEntryMock.mockReset().mockReturnValue(null);
@@ -284,7 +299,10 @@ describe("/acp command", () => {
     const params = createDiscordParams("/acp");
     const result = await handleAcpCommand(params, true);
     expect(result?.reply?.text).toContain("ACP commands:");
+    expect(result?.reply?.text).toContain("/acp on");
+    expect(result?.reply?.text).toContain("/acp off");
     expect(result?.reply?.text).toContain("/acp spawn");
+    expect(result?.reply?.text).toContain("Validate ACP with repo tasks first");
   });
 
   it("spawns an ACP session and binds a Discord thread", async () => {
@@ -349,6 +367,299 @@ describe("/acp command", () => {
     const seededWithoutEntry = upsertArgs?.mutate(undefined, undefined);
     expect(seededWithoutEntry?.backend).toBe("acpx");
     expect(seededWithoutEntry?.runtimeSessionName).toContain(":runtime");
+  });
+
+  it("attaches ACP spawn to the current Telegram conversation for --thread auto", async () => {
+    hoisted.sessionBindingCapabilitiesMock.mockReturnValue({
+      adapterAvailable: false,
+      bindSupported: false,
+      unbindSupported: false,
+      placements: [],
+    });
+
+    const params = createTelegramParams(
+      "/acp spawn codex --thread auto --cwd /Users/ralphwiggum/OpenClaw/Vault",
+    );
+    const result = await handleAcpCommand(params, true);
+
+    expect(result?.reply?.text).toContain(
+      "Attached this telegram conversation to agent:main:telegram:direct:6848608231",
+    );
+    expect(hoisted.ensureSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: "agent:main:telegram:direct:6848608231",
+        agent: "codex",
+        cwd: "/users/ralphwiggum/openclaw/vault",
+      }),
+    );
+    expect(hoisted.sessionBindingBindMock).not.toHaveBeenCalled();
+  });
+
+  it("attaches ACP spawn for --thread auto when telegram OriginatingTo is missing", async () => {
+    hoisted.sessionBindingCapabilitiesMock.mockReturnValue({
+      adapterAvailable: false,
+      bindSupported: false,
+      unbindSupported: false,
+      placements: [],
+    });
+
+    const params = createTelegramParams(
+      "/acp spawn codex --thread auto --cwd /Users/ralphwiggum/OpenClaw/Vault",
+    );
+    delete params.ctx.OriginatingTo;
+    delete params.command.to;
+    delete params.ctx.To;
+
+    const result = await handleAcpCommand(params, true);
+
+    expect(result?.reply?.text).toContain(
+      "Attached this telegram conversation to agent:main:telegram:direct:6848608231",
+    );
+    expect(hoisted.ensureSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: "agent:main:telegram:direct:6848608231",
+        agent: "codex",
+      }),
+    );
+  });
+
+  it("resolves /acp status from Telegram requester session when ACP is attached in-place", async () => {
+    hoisted.readAcpSessionEntryMock.mockReturnValue({
+      sessionKey: "agent:main:telegram:direct:6848608231",
+      storeSessionKey: "agent:main:telegram:direct:6848608231",
+      acp: {
+        backend: "acpx",
+        agent: "codex",
+        runtimeSessionName: "runtime-telegram",
+        mode: "persistent",
+        state: "idle",
+        lastActivityAt: Date.now(),
+      },
+    });
+
+    const params = createTelegramParams("/acp status", baseCfg);
+    const result = await handleAcpCommand(params, true);
+
+    expect(result?.reply?.text).toContain("ACP status:");
+    expect(result?.reply?.text).toContain("session: agent:main:telegram:direct:6848608231");
+  });
+
+  it("prints explicit-target guidance for unbound Telegram ACP spawns", async () => {
+    const params = createTelegramParams("/acp spawn codex --thread off");
+    const result = await handleAcpCommand(params, true);
+
+    expect(result?.reply?.text).toContain("Session is unbound (use explicit target commands");
+    expect(result?.reply?.text).toContain("/acp status agent:codex:acp:");
+    expect(result?.reply?.text).toContain(
+      "This session is now your recent ACP target in this conversation.",
+    );
+    expect(result?.reply?.text).toContain(
+      "You can run /acp steer, /acp status, and /acp cancel without a session key.",
+    );
+    expect(result?.reply?.text).toContain("현재 모드: Codex ACP");
+  });
+
+  it("resolves /acp status to the most recent unbound ACP spawn for the same Telegram requester", async () => {
+    const spawnParams = createTelegramParams("/acp spawn codex --thread off");
+    const spawnResult = await handleAcpCommand(spawnParams, true);
+    const spawnedSessionKey =
+      spawnResult?.reply?.text.match(/Spawned ACP session (\S+)/)?.[1] ?? undefined;
+    expect(spawnedSessionKey).toMatch(/^agent:codex:acp:/);
+
+    hoisted.readAcpSessionEntryMock.mockImplementation((inputUnknown: unknown) => {
+      const input = inputUnknown as { sessionKey?: string };
+      if (input.sessionKey !== spawnedSessionKey) {
+        return null;
+      }
+      return {
+        sessionKey: spawnedSessionKey,
+        storeSessionKey: spawnedSessionKey,
+        acp: {
+          backend: "acpx",
+          agent: "codex",
+          runtimeSessionName: "runtime-unbound",
+          mode: "persistent",
+          state: "idle",
+          lastActivityAt: Date.now(),
+        },
+      };
+    });
+
+    const statusParams = createTelegramParams("/acp status");
+    const statusResult = await handleAcpCommand(statusParams, true);
+
+    expect(statusResult?.reply?.text).toContain("ACP status:");
+    expect(statusResult?.reply?.text).toContain(`session: ${spawnedSessionKey}`);
+  });
+
+  it("resolves /acp steer to the most recent unbound ACP spawn for the same Telegram requester", async () => {
+    const spawnParams = createTelegramParams("/acp spawn codex --thread off");
+    const spawnResult = await handleAcpCommand(spawnParams, true);
+    const spawnedSessionKey =
+      spawnResult?.reply?.text.match(/Spawned ACP session (\S+)/)?.[1] ?? undefined;
+    expect(spawnedSessionKey).toMatch(/^agent:codex:acp:/);
+
+    hoisted.readAcpSessionEntryMock.mockImplementation((inputUnknown: unknown) => {
+      const input = inputUnknown as { sessionKey?: string };
+      if (input.sessionKey !== spawnedSessionKey) {
+        return null;
+      }
+      return {
+        sessionKey: spawnedSessionKey,
+        storeSessionKey: spawnedSessionKey,
+        acp: {
+          backend: "acpx",
+          agent: "codex",
+          runtimeSessionName: "runtime-unbound",
+          mode: "persistent",
+          state: "idle",
+          lastActivityAt: Date.now(),
+        },
+      };
+    });
+    hoisted.runTurnMock.mockImplementation(async function* () {
+      yield { type: "text_delta", text: "done" };
+      yield { type: "done" };
+    });
+
+    const steerParams = createTelegramParams("/acp steer test");
+    const steerResult = await handleAcpCommand(steerParams, true);
+
+    expect(hoisted.runTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "steer",
+        text: "test",
+        handle: expect.objectContaining({
+          sessionKey: spawnedSessionKey,
+        }),
+      }),
+    );
+    expect(steerResult?.reply?.text).toContain(`ACP steer sent to ${spawnedSessionKey}`);
+  });
+
+  it("clears recent target after /acp close so sessionless follow-up fails", async () => {
+    const spawnParams = createTelegramParams("/acp spawn codex --thread off");
+    const spawnResult = await handleAcpCommand(spawnParams, true);
+    const spawnedSessionKey =
+      spawnResult?.reply?.text.match(/Spawned ACP session (\S+)/)?.[1] ?? undefined;
+    expect(spawnedSessionKey).toMatch(/^agent:codex:acp:/);
+    hoisted.callGatewayMock.mockImplementation(async (request: { method?: string }) => {
+      if (request.method === "sessions.resolve") {
+        return { key: spawnedSessionKey };
+      }
+      return { ok: true };
+    });
+
+    hoisted.readAcpSessionEntryMock.mockImplementation((inputUnknown: unknown) => {
+      const input = inputUnknown as { sessionKey?: string };
+      if (input.sessionKey !== spawnedSessionKey) {
+        return null;
+      }
+      return {
+        sessionKey: spawnedSessionKey,
+        storeSessionKey: spawnedSessionKey,
+        acp: {
+          backend: "acpx",
+          agent: "codex",
+          runtimeSessionName: "runtime-unbound",
+          mode: "persistent",
+          state: "idle",
+          lastActivityAt: Date.now(),
+        },
+      };
+    });
+
+    const closeParams = createTelegramParams(`/acp close ${spawnedSessionKey}`);
+    const closeResult = await handleAcpCommand(closeParams, true);
+    expect(closeResult?.reply?.text).toContain(`Closed ACP session ${spawnedSessionKey}`);
+
+    const statusParams = createTelegramParams("/acp status");
+    const statusResult = await handleAcpCommand(statusParams, true);
+    expect(statusResult?.reply?.text).toContain("Session is not ACP-enabled");
+  });
+
+  it("turns ACP on by reusing the recent Codex persistent target", async () => {
+    const spawnParams = createTelegramParams("/acp spawn codex --thread off");
+    const spawnResult = await handleAcpCommand(spawnParams, true);
+    const spawnedSessionKey =
+      spawnResult?.reply?.text.match(/Spawned ACP session (\S+)/)?.[1] ?? undefined;
+    expect(spawnedSessionKey).toMatch(/^agent:codex:acp:/);
+
+    hoisted.readAcpSessionEntryMock.mockImplementation((inputUnknown: unknown) => {
+      const input = inputUnknown as { sessionKey?: string };
+      if (input.sessionKey !== spawnedSessionKey) {
+        return null;
+      }
+      return {
+        sessionKey: spawnedSessionKey,
+        storeSessionKey: spawnedSessionKey,
+        acp: {
+          backend: "acpx",
+          agent: "codex",
+          runtimeSessionName: "runtime-recent",
+          mode: "persistent",
+          state: "idle",
+          lastActivityAt: Date.now(),
+        },
+      };
+    });
+
+    const onParams = createTelegramParams("/acp on");
+    const onResult = await handleAcpCommand(onParams, true);
+
+    expect(onResult?.reply?.text).toContain(`resumed Codex session ${spawnedSessionKey}`);
+    expect(onResult?.reply?.text).toContain("현재 모드: Codex ACP");
+    expect(hoisted.ensureSessionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("turns ACP on by spawning Codex when no recent target exists", async () => {
+    const params = createTelegramParams("/acp on");
+    const result = await handleAcpCommand(params, true);
+
+    expect(result?.reply?.text).toContain("Spawned ACP session");
+    expect(result?.reply?.text).toContain("현재 모드: Codex ACP");
+    expect(hoisted.ensureSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "codex",
+        mode: "persistent",
+      }),
+    );
+  });
+
+  it("turns ACP off by clearing the conversation-scoped recent target", async () => {
+    const spawnParams = createTelegramParams("/acp spawn codex --thread off");
+    const spawnResult = await handleAcpCommand(spawnParams, true);
+    const spawnedSessionKey =
+      spawnResult?.reply?.text.match(/Spawned ACP session (\S+)/)?.[1] ?? undefined;
+    expect(spawnedSessionKey).toMatch(/^agent:codex:acp:/);
+
+    hoisted.readAcpSessionEntryMock.mockImplementation((inputUnknown: unknown) => {
+      const input = inputUnknown as { sessionKey?: string };
+      if (input.sessionKey !== spawnedSessionKey) {
+        return null;
+      }
+      return {
+        sessionKey: spawnedSessionKey,
+        storeSessionKey: spawnedSessionKey,
+        acp: {
+          backend: "acpx",
+          agent: "codex",
+          runtimeSessionName: "runtime-unbound",
+          mode: "persistent",
+          state: "idle",
+          lastActivityAt: Date.now(),
+        },
+      };
+    });
+
+    const offParams = createTelegramParams("/acp off");
+    const offResult = await handleAcpCommand(offParams, true);
+    expect(offResult?.reply?.text).toContain("cleared recent ACP target");
+    expect(offResult?.reply?.text).toContain("현재 모드: 기본 OpenClaw");
+
+    const steerParams = createTelegramParams("/acp steer 현재 작업 디렉터리 알려줘");
+    const steerResult = await handleAcpCommand(steerParams, true);
+    expect(steerResult?.reply?.text).toContain("Session is not ACP-enabled");
   });
 
   it("requires explicit ACP target when acp.defaultAgent is not configured", async () => {
@@ -467,6 +778,254 @@ describe("/acp command", () => {
     expect(result?.reply?.text).toContain("Applied steering.");
   });
 
+  it("accepts unicode dash variants for --session in /acp steer", async () => {
+    hoisted.callGatewayMock.mockImplementation(async (request: { method?: string }) => {
+      if (request.method === "sessions.resolve") {
+        return { key: "agent:codex:acp:s1" };
+      }
+      return { ok: true };
+    });
+    hoisted.readAcpSessionEntryMock.mockReturnValue({
+      sessionKey: "agent:codex:acp:s1",
+      storeSessionKey: "agent:codex:acp:s1",
+      acp: {
+        backend: "acpx",
+        agent: "codex",
+        runtimeSessionName: "runtime-1",
+        mode: "persistent",
+        state: "idle",
+        lastActivityAt: Date.now(),
+      },
+    });
+    hoisted.runTurnMock.mockImplementation(async function* () {
+      yield { type: "text_delta", text: "done" };
+      yield { type: "done" };
+    });
+
+    const params = createTelegramParams("/acp steer —session agent:codex:acp:s1 네이버 열어줘");
+    const result = await handleAcpCommand(params, true);
+
+    expect(hoisted.runTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "steer",
+        text: "네이버 열어줘",
+        handle: expect.objectContaining({
+          sessionKey: "agent:codex:acp:s1",
+        }),
+      }),
+    );
+    expect(result?.reply?.text).toContain("done");
+  });
+
+  it("reuses the last explicit /acp target for the same Telegram requester", async () => {
+    hoisted.callGatewayMock.mockImplementation(async (request: { method?: string }) => {
+      if (request.method === "sessions.resolve") {
+        return { key: "agent:codex:acp:s1" };
+      }
+      return { ok: true };
+    });
+    hoisted.readAcpSessionEntryMock.mockReturnValue({
+      sessionKey: "agent:codex:acp:s1",
+      storeSessionKey: "agent:codex:acp:s1",
+      acp: {
+        backend: "acpx",
+        agent: "codex",
+        runtimeSessionName: "runtime-1",
+        mode: "persistent",
+        state: "idle",
+        lastActivityAt: Date.now(),
+      },
+    });
+    hoisted.runTurnMock.mockImplementation(async function* (input: { text: string }) {
+      yield { type: "text_delta", text: `ok:${input.text}` };
+      yield { type: "done" };
+    });
+
+    const firstParams = createTelegramParams("/acp steer --session agent:codex:acp:s1 first");
+    const firstResult = await handleAcpCommand(firstParams, true);
+    expect(firstResult?.reply?.text).toContain("ok:first");
+
+    const secondParams = createTelegramParams("/acp steer second");
+    const secondResult = await handleAcpCommand(secondParams, true);
+
+    expect(hoisted.runTurnMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        mode: "steer",
+        text: "second",
+        handle: expect.objectContaining({
+          sessionKey: "agent:codex:acp:s1",
+        }),
+      }),
+    );
+    expect(secondResult?.reply?.text).toContain("ok:second");
+  });
+
+  it("fails fast when /acp steer exceeds the command timeout", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("OPENCLAW_ACP_STEER_TIMEOUT_MS", "1000");
+    try {
+      hoisted.callGatewayMock.mockImplementation(async (request: { method?: string }) => {
+        if (request.method === "sessions.resolve") {
+          return { key: "agent:codex:acp:s1" };
+        }
+        return { ok: true };
+      });
+      hoisted.readAcpSessionEntryMock.mockReturnValue({
+        sessionKey: "agent:codex:acp:s1",
+        storeSessionKey: "agent:codex:acp:s1",
+        acp: {
+          backend: "acpx",
+          agent: "codex",
+          runtimeSessionName: "runtime-1",
+          mode: "persistent",
+          state: "idle",
+          lastActivityAt: Date.now(),
+        },
+      });
+      hoisted.runTurnMock.mockImplementation(async function* (input: { signal?: AbortSignal }) {
+        await new Promise<void>((resolve) => {
+          if (input.signal?.aborted) {
+            resolve();
+            return;
+          }
+          input.signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        yield { type: "done" };
+      });
+
+      const params = createDiscordParams("/acp steer --session agent:codex:acp:s1 long-running");
+      const resultPromise = handleAcpCommand(params, true);
+      await vi.advanceTimersByTimeAsync(1_000);
+      const result = await resultPromise;
+
+      expect(result?.reply?.text).toContain("ACP steer timed out after 1s.");
+      expect(result?.reply?.text).toContain(
+        "auto-check: /acp status indicates the runtime is still alive.",
+      );
+      expect(result?.reply?.text).toContain("1) /acp steer <repo instruction>");
+      expect(hoisted.cancelMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reason: "steer-timeout",
+        }),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses default /acp steer timeout when OPENCLAW_ACP_STEER_TIMEOUT_MS is unset", async () => {
+    vi.useFakeTimers();
+    vi.unstubAllEnvs();
+    try {
+      hoisted.callGatewayMock.mockImplementation(async (request: { method?: string }) => {
+        if (request.method === "sessions.resolve") {
+          return { key: "agent:codex:acp:s1" };
+        }
+        return { ok: true };
+      });
+      hoisted.readAcpSessionEntryMock.mockReturnValue({
+        sessionKey: "agent:codex:acp:s1",
+        storeSessionKey: "agent:codex:acp:s1",
+        acp: {
+          backend: "acpx",
+          agent: "codex",
+          runtimeSessionName: "runtime-1",
+          mode: "persistent",
+          state: "idle",
+          lastActivityAt: Date.now(),
+        },
+      });
+      hoisted.runTurnMock.mockImplementation(async function* (input: { signal?: AbortSignal }) {
+        await new Promise<void>((resolve) => {
+          if (input.signal?.aborted) {
+            resolve();
+            return;
+          }
+          input.signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        yield { type: "done" };
+      });
+
+      const params = createDiscordParams("/acp steer --session agent:codex:acp:s1 long-running");
+      const resultPromise = handleAcpCommand(params, true);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(hoisted.cancelMock).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(119_000);
+      const result = await resultPromise;
+
+      expect(result?.reply?.text).toContain("ACP steer timed out after 120s.");
+      expect(hoisted.cancelMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reason: "steer-timeout",
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("suggests /acp on recovery when timeout auto-check sees dead runtime", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("OPENCLAW_ACP_STEER_TIMEOUT_MS", "1000");
+    try {
+      hoisted.callGatewayMock.mockImplementation(async (request: { method?: string }) => {
+        if (request.method === "sessions.resolve") {
+          return { key: "agent:codex:acp:s1" };
+        }
+        return { ok: true };
+      });
+      hoisted.readAcpSessionEntryMock.mockReturnValue({
+        sessionKey: "agent:codex:acp:s1",
+        storeSessionKey: "agent:codex:acp:s1",
+        acp: {
+          backend: "acpx",
+          agent: "codex",
+          runtimeSessionName: "runtime-1",
+          mode: "persistent",
+          state: "idle",
+          lastActivityAt: Date.now(),
+        },
+      });
+      hoisted.getStatusMock.mockResolvedValue({
+        summary: "status=dead pid=1234",
+        details: { status: "dead", ownerStatus: "inactive" },
+      });
+      hoisted.runTurnMock.mockImplementation(async function* (input: { signal?: AbortSignal }) {
+        await new Promise<void>((resolve) => {
+          if (input.signal?.aborted) {
+            resolve();
+            return;
+          }
+          input.signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        yield { type: "done" };
+      });
+
+      const params = createDiscordParams("/acp steer --session agent:codex:acp:s1 long-running");
+      const resultPromise = handleAcpCommand(params, true);
+      await vi.advanceTimersByTimeAsync(1_000);
+      const result = await resultPromise;
+
+      expect(result?.reply?.text).toContain("ACP steer timed out after 1s.");
+      expect(result?.reply?.text).toContain(
+        "auto-check: /acp status shows the runtime is not healthy.",
+      );
+      expect(result?.reply?.text).toContain("1) /acp on");
+      expect(hoisted.cancelMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reason: "steer-timeout",
+        }),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+      vi.useRealTimers();
+    }
+  });
+
   it("blocks /acp steer when ACP dispatch is disabled by policy", async () => {
     const cfg = {
       ...baseCfg,
@@ -531,6 +1090,7 @@ describe("/acp command", () => {
     );
     expect(hoisted.upsertAcpSessionMetaMock).toHaveBeenCalled();
     expect(result?.reply?.text).toContain("Removed 1 binding");
+    expect(result?.reply?.text).toContain("현재 모드: 기본 OpenClaw");
   });
 
   it("lists ACP sessions from the session store", async () => {
@@ -614,11 +1174,54 @@ describe("/acp command", () => {
     const result = await handleAcpCommand(params, true);
 
     expect(result?.reply?.text).toContain("ACP status:");
+    expect(result?.reply?.text).toContain("현재 모드: Codex ACP");
     expect(result?.reply?.text).toContain("session: agent:codex:acp:s1");
     expect(result?.reply?.text).toContain("agent session id: codex-sid-1");
     expect(result?.reply?.text).toContain("acpx session id: acpx-sid-1");
     expect(result?.reply?.text).toContain("capabilities:");
     expect(hoisted.getStatusMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("explains dead persistent runtime as cold standby in /acp status", async () => {
+    hoisted.sessionBindingResolveByConversationMock.mockReturnValue(
+      createSessionBinding({
+        targetSessionKey: "agent:codex:acp:s1",
+        conversation: {
+          channel: "discord",
+          accountId: "default",
+          conversationId: "thread-1",
+          parentConversationId: "parent-1",
+        },
+      }),
+    );
+    hoisted.readAcpSessionEntryMock.mockReturnValue({
+      sessionKey: "agent:codex:acp:s1",
+      storeSessionKey: "agent:codex:acp:s1",
+      acp: {
+        backend: "acpx",
+        agent: "codex",
+        runtimeSessionName: "runtime-1",
+        mode: "persistent",
+        state: "idle",
+        lastActivityAt: Date.now(),
+      },
+    });
+    hoisted.getStatusMock.mockResolvedValueOnce({
+      summary: "status=dead pid=1234",
+      details: {
+        status: "dead",
+        ownerStatus: "inactive",
+        exitCode: null,
+        signal: null,
+      },
+    });
+
+    const params = createDiscordParams("/acp status", baseCfg);
+    params.ctx.MessageThreadId = "thread-1";
+
+    const result = await handleAcpCommand(params, true);
+    expect(result?.reply?.text).toContain("runtime: status=dead pid=1234");
+    expect(result?.reply?.text).toContain("runtimeHealth: cold");
   });
 
   it("updates ACP runtime mode via /acp set-mode", async () => {
@@ -766,6 +1369,103 @@ describe("/acp command", () => {
 
     expect(result?.reply?.text).toContain("ACP error (ACP_INVALID_RUNTIME_OPTION)");
     expect(hoisted.setConfigOptionMock).not.toHaveBeenCalled();
+  });
+
+  it("maps /acp permissions to mode when approval_policy is unsupported", async () => {
+    hoisted.sessionBindingResolveByConversationMock.mockReturnValue(
+      createSessionBinding({
+        targetSessionKey: "agent:codex:acp:s1",
+        conversation: {
+          channel: "discord",
+          accountId: "default",
+          conversationId: "thread-1",
+          parentConversationId: "parent-1",
+        },
+      }),
+    );
+    hoisted.readAcpSessionEntryMock.mockReturnValue({
+      sessionKey: "agent:codex:acp:s1",
+      storeSessionKey: "agent:codex:acp:s1",
+      acp: {
+        backend: "acpx",
+        agent: "codex",
+        runtimeSessionName: "runtime-1",
+        mode: "persistent",
+        state: "idle",
+        lastActivityAt: Date.now(),
+      },
+    });
+    hoisted.setConfigOptionMock
+      .mockRejectedValueOnce(
+        new AcpRuntimeError(
+          "ACP_BACKEND_UNSUPPORTED_CONTROL",
+          'ACP backend "acpx" does not accept config key "approval_policy".',
+        ),
+      )
+      .mockResolvedValueOnce({
+        backendExtras: {
+          mode: "full-access",
+        },
+      });
+
+    const params = createDiscordParams("/acp permissions never", baseCfg);
+    params.ctx.MessageThreadId = "thread-1";
+    const result = await handleAcpCommand(params, true);
+
+    expect(hoisted.setConfigOptionMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        key: "approval_policy",
+        value: "never",
+      }),
+    );
+    expect(hoisted.setConfigOptionMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        key: "mode",
+        value: "full-access",
+      }),
+    );
+    expect(result?.reply?.text).toContain("mapped to mode=full-access");
+  });
+
+  it("shows backend timeout hint when timeout config key is unsupported", async () => {
+    hoisted.sessionBindingResolveByConversationMock.mockReturnValue(
+      createSessionBinding({
+        targetSessionKey: "agent:codex:acp:s1",
+        conversation: {
+          channel: "discord",
+          accountId: "default",
+          conversationId: "thread-1",
+          parentConversationId: "parent-1",
+        },
+      }),
+    );
+    hoisted.readAcpSessionEntryMock.mockReturnValue({
+      sessionKey: "agent:codex:acp:s1",
+      storeSessionKey: "agent:codex:acp:s1",
+      acp: {
+        backend: "acpx",
+        agent: "codex",
+        runtimeSessionName: "runtime-1",
+        mode: "persistent",
+        state: "idle",
+        lastActivityAt: Date.now(),
+      },
+    });
+    hoisted.setConfigOptionMock.mockRejectedValueOnce(
+      new AcpRuntimeError(
+        "ACP_BACKEND_UNSUPPORTED_CONTROL",
+        'ACP backend "acpx" does not accept config key "timeout".',
+      ),
+    );
+
+    const params = createDiscordParams("/acp timeout 120", baseCfg);
+    params.ctx.MessageThreadId = "thread-1";
+    const result = await handleAcpCommand(params, true);
+
+    expect(result?.reply?.text).toContain("ACP error (ACP_BACKEND_UNSUPPORTED_CONTROL)");
+    expect(result?.reply?.text).toContain("does not support per-session timeout config");
   });
 
   it("returns actionable doctor output when backend is missing", async () => {

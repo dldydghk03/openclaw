@@ -14,6 +14,8 @@ import { resolveAcpCommandChannel, resolveAcpCommandThreadId } from "./context.j
 export const COMMAND = "/acp";
 export const ACP_SPAWN_USAGE =
   "Usage: /acp spawn [agentId] [--mode persistent|oneshot] [--thread auto|here|off] [--cwd <path>] [--label <label>].";
+export const ACP_ON_USAGE = "Usage: /acp on";
+export const ACP_OFF_USAGE = "Usage: /acp off";
 export const ACP_STEER_USAGE =
   "Usage: /acp steer [--session <session-key|session-id|session-label>] <instruction>";
 export const ACP_SET_MODE_USAGE =
@@ -33,9 +35,13 @@ export const ACP_INSTALL_USAGE = "Usage: /acp install";
 export const ACP_DOCTOR_USAGE = "Usage: /acp doctor";
 export const ACP_SESSIONS_USAGE = "Usage: /acp sessions";
 export const ACP_STEER_OUTPUT_LIMIT = 800;
+export const ACP_MODE_CODEX_TEXT = "현재 모드: Codex ACP";
+export const ACP_MODE_DEFAULT_TEXT = "현재 모드: 기본 OpenClaw";
 export const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type AcpAction =
+  | "on"
+  | "off"
   | "spawn"
   | "cancel"
   | "steer"
@@ -89,6 +95,8 @@ export function stopWithText(text: string): CommandHandlerResult {
 export function resolveAcpAction(tokens: string[]): AcpAction {
   const action = tokens[0]?.trim().toLowerCase();
   if (
+    action === "on" ||
+    action === "off" ||
     action === "spawn" ||
     action === "cancel" ||
     action === "steer" ||
@@ -121,7 +129,13 @@ function readOptionValue(params: { tokens: string[]; index: number; flag: string
     }
   | { matched: false } {
   const token = params.tokens[params.index] ?? "";
-  if (token === params.flag) {
+  const normalizedToken = normalizeCliDashToken(token);
+  const normalizedFlag = normalizeCliDashToken(params.flag);
+  const normalizedShortFlag = normalizedFlag.startsWith("--")
+    ? normalizedFlag.slice(1)
+    : normalizedFlag;
+  const isFlagToken = normalizedToken === normalizedFlag || normalizedToken === normalizedShortFlag;
+  if (isFlagToken) {
     const nextValue = params.tokens[params.index + 1]?.trim() ?? "";
     if (!nextValue || nextValue.startsWith("--")) {
       return {
@@ -136,8 +150,15 @@ function readOptionValue(params: { tokens: string[]; index: number; flag: string
       nextIndex: params.index + 2,
     };
   }
-  if (token.startsWith(`${params.flag}=`)) {
-    const value = token.slice(`${params.flag}=`.length).trim();
+  const longPrefix = `${normalizedFlag}=`;
+  const shortPrefix = `${normalizedShortFlag}=`;
+  const matchingPrefix = normalizedToken.startsWith(longPrefix)
+    ? longPrefix
+    : normalizedToken.startsWith(shortPrefix)
+      ? shortPrefix
+      : null;
+  if (matchingPrefix) {
+    const value = normalizedToken.slice(matchingPrefix.length).trim();
     if (!value) {
       return {
         matched: true,
@@ -152,6 +173,13 @@ function readOptionValue(params: { tokens: string[]; index: number; flag: string
     };
   }
   return { matched: false };
+}
+
+function normalizeCliDashToken(token: string): string {
+  if (!token) {
+    return token;
+  }
+  return token.replace(/^[\u2010-\u2015\u2212]+/u, (match) => "-".repeat(match.length));
 }
 
 function resolveDefaultSpawnThreadMode(params: HandleCommandsParams): AcpSpawnThreadMode {
@@ -382,6 +410,8 @@ export function resolveAcpHelpText(): string {
   return [
     "ACP commands:",
     "-----",
+    "/acp on",
+    "/acp off",
     "/acp spawn [agentId] [--mode persistent|oneshot] [--thread auto|here|off] [--cwd <path>] [--label <label>]",
     "/acp cancel [session-key|session-id|session-label]",
     "/acp steer [--session <session-key|session-id|session-label>] <instruction>",
@@ -401,6 +431,8 @@ export function resolveAcpHelpText(): string {
     "Notes:",
     "- /focus and /unfocus also work with ACP session keys.",
     "- ACP dispatch of normal thread messages is controlled by acp.dispatch.enabled.",
+    "- Validate ACP with repo tasks first (cwd, file exists/read/edit/summary), then try GUI/browser instructions.",
+    '- Use plain "--session <session-key>" when steering explicitly.',
   ].join("\n");
 }
 

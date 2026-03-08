@@ -7,9 +7,12 @@ import {
   validateRuntimeModelInput,
   validateRuntimePermissionProfileInput,
 } from "../../../acp/control-plane/runtime-options.js";
+import { toAcpRuntimeError } from "../../../acp/runtime/errors.js";
 import { resolveAcpSessionIdentifierLinesFromIdentity } from "../../../acp/runtime/session-identifiers.js";
+import type { AcpRuntimeStatus } from "../../../acp/runtime/types.js";
 import type { CommandHandlerResult, HandleCommandsParams } from "../commands-types.js";
 import {
+  ACP_MODE_CODEX_TEXT,
   ACP_CWD_USAGE,
   ACP_MODEL_USAGE,
   ACP_PERMISSIONS_USAGE,
@@ -26,6 +29,91 @@ import {
   withAcpCommandErrorBoundary,
 } from "./shared.js";
 import { resolveAcpTargetSessionKey } from "./targets.js";
+
+function asOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function asOptionalFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function buildRuntimeHealthLines(params: {
+  mode: string;
+  runtimeStatus?: AcpRuntimeStatus;
+}): string[] {
+  const summary = params.runtimeStatus?.summary?.toLowerCase() ?? "";
+  const details = params.runtimeStatus?.details;
+  const detailsRecord = details && typeof details === "object" ? details : undefined;
+  const status = asOptionalString(detailsRecord?.status)?.toLowerCase();
+  const effectiveStatus = status ?? (summary.includes("status=dead") ? "dead" : undefined);
+
+  if (effectiveStatus !== "dead") {
+    return [];
+  }
+
+  const ownerStatus = asOptionalString(detailsRecord?.ownerStatus)?.toLowerCase();
+  const exitCode = asOptionalFiniteNumber(detailsRecord?.exitCode);
+  const signal = asOptionalString(detailsRecord?.signal);
+
+  if (params.mode === "persistent") {
+    if (exitCode != null || signal) {
+      const cause =
+        exitCode != null ? `exitCode=${exitCode}` : signal ? `signal=${signal}` : "unknown";
+      return [
+        `runtimeHealth: degraded (persistent runtime exited: ${cause})`,
+        "next: run /acp close, then /acp spawn codex --mode persistent and retry in this conversation.",
+      ];
+    }
+    if (ownerStatus === "active") {
+      return [
+        "runtimeHealth: standby (owner active; worker process starts on demand when a turn runs).",
+      ];
+    }
+    return [
+      "runtimeHealth: cold (session is attached but owner is inactive until the first prompt).",
+    ];
+  }
+
+  if (params.mode === "oneshot") {
+    return ["runtimeHealth: idle (oneshot runtime is not kept alive between turns)."];
+  }
+
+  return [];
+}
+
+function mapPermissionProfileToMode(permissionProfile: string): string | null {
+  const normalized = permissionProfile.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (
+    normalized === "never" ||
+    normalized === "approve-all" ||
+    normalized === "full-access" ||
+    normalized === "danger-full-access" ||
+    normalized === "yolo"
+  ) {
+    return "full-access";
+  }
+  if (
+    normalized === "read-only" ||
+    normalized === "deny-all" ||
+    normalized === "strict" ||
+    normalized === "deny"
+  ) {
+    return "read-only";
+  }
+  if (
+    normalized === "approve-reads" ||
+    normalized === "auto" ||
+    normalized === "default" ||
+    normalized === "on-request"
+  ) {
+    return "auto";
+  }
+  return null;
+}
 
 export async function handleAcpStatusAction(
   params: HandleCommandsParams,
@@ -59,6 +147,7 @@ export async function handleAcpStatusAction(
       const lines = [
         "ACP status:",
         "-----",
+        ACP_MODE_CODEX_TEXT,
         `session: ${status.sessionKey}`,
         `backend: ${status.backend}`,
         `agent: ${status.agent}`,
@@ -70,6 +159,10 @@ export async function handleAcpStatusAction(
         `lastActivityAt: ${new Date(status.lastActivityAt).toISOString()}`,
         ...(status.lastError ? [`lastError: ${status.lastError}`] : []),
         ...(status.runtimeStatus?.summary ? [`runtime: ${status.runtimeStatus.summary}`] : []),
+        ...buildRuntimeHealthLines({
+          mode: status.mode,
+          runtimeStatus: status.runtimeStatus,
+        }),
         ...(status.runtimeStatus?.details
           ? [`runtimeDetails: ${JSON.stringify(status.runtimeStatus.details)}`]
           : []),
@@ -222,23 +315,57 @@ export async function handleAcpPermissionsAction(
   return await withAcpCommandErrorBoundary({
     run: async () => {
       const permissionProfile = validateRuntimePermissionProfileInput(parsed.value.value);
-      const options = await getAcpSessionManager().setSessionConfigOption({
-        cfg: params.cfg,
-        sessionKey: target.sessionKey,
-        key: "approval_policy",
-        value: permissionProfile,
-      });
-      return {
-        permissionProfile,
-        options,
-      };
+      const acpManager = getAcpSessionManager();
+      try {
+        const options = await acpManager.setSessionConfigOption({
+          cfg: params.cfg,
+          sessionKey: target.sessionKey,
+          key: "approval_policy",
+          value: permissionProfile,
+        });
+        return {
+          permissionProfile,
+          options,
+          mappedMode: null as string | null,
+        };
+      } catch (error) {
+        const acpError = toAcpRuntimeError({
+          error,
+          fallbackCode: "ACP_TURN_FAILED",
+          fallbackMessage: "Could not update ACP permissions profile.",
+        });
+        if (acpError.code !== "ACP_BACKEND_UNSUPPORTED_CONTROL") {
+          throw error;
+        }
+        const mappedMode = mapPermissionProfileToMode(permissionProfile);
+        if (!mappedMode) {
+          throw error;
+        }
+        const options = await acpManager.setSessionConfigOption({
+          cfg: params.cfg,
+          sessionKey: target.sessionKey,
+          key: "mode",
+          value: mappedMode,
+        });
+        return {
+          permissionProfile,
+          options,
+          mappedMode,
+        };
+      }
     },
     fallbackCode: "ACP_TURN_FAILED",
     fallbackMessage: "Could not update ACP permissions profile.",
-    onSuccess: ({ permissionProfile, options }) =>
-      stopWithText(
+    onSuccess: ({ permissionProfile, options, mappedMode }) => {
+      if (mappedMode) {
+        return stopWithText(
+          `✅ Updated ACP permissions for ${target.sessionKey}: ${permissionProfile} (mapped to mode=${mappedMode}). Effective options: ${formatRuntimeOptionsText(options)}`,
+        );
+      }
+      return stopWithText(
         `✅ Updated ACP permissions profile for ${target.sessionKey}: ${permissionProfile}. Effective options: ${formatRuntimeOptionsText(options)}`,
-      ),
+      );
+    },
   });
 }
 

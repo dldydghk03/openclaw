@@ -7,6 +7,8 @@ import {
 import {
   handleAcpCancelAction,
   handleAcpCloseAction,
+  handleAcpOffAction,
+  handleAcpOnAction,
   handleAcpSpawnAction,
   handleAcpSteerAction,
 } from "./commands-acp/lifecycle.js";
@@ -39,6 +41,8 @@ type AcpActionHandler = (
 ) => Promise<CommandHandlerResult>;
 
 const ACP_ACTION_HANDLERS: Record<Exclude<AcpAction, "help">, AcpActionHandler> = {
+  on: handleAcpOnAction,
+  off: async (params, tokens) => handleAcpOffAction(params, tokens),
   spawn: handleAcpSpawnAction,
   cancel: handleAcpCancelAction,
   steer: handleAcpSteerAction,
