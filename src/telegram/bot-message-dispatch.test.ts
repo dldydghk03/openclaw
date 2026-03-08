@@ -36,12 +36,16 @@ vi.mock("./sticker-cache.js", () => ({
   describeStickerImage: vi.fn(),
 }));
 
-import { dispatchTelegramMessage } from "./bot-message-dispatch.js";
+import {
+  dispatchTelegramMessage,
+  resetTelegramDeliveryDedupeForTests,
+} from "./bot-message-dispatch.js";
 
 describe("dispatchTelegramMessage draft streaming", () => {
   type TelegramMessageContext = Parameters<typeof dispatchTelegramMessage>[0]["context"];
 
   beforeEach(() => {
+    resetTelegramDeliveryDedupeForTests();
     createTelegramDraftStream.mockClear();
     dispatchReplyWithBufferedBlockDispatcher.mockClear();
     deliverReplies.mockClear();
@@ -98,6 +102,7 @@ describe("dispatchTelegramMessage draft streaming", () => {
       msg: {
         chat: { id: 123, type: "private" },
         message_id: 456,
+        date: 1_777_777_777,
         message_thread_id: 777,
       },
       chatId: 123,
@@ -455,10 +460,13 @@ describe("dispatchTelegramMessage draft streaming", () => {
     );
     deliverReplies.mockResolvedValue({ delivered: true });
     editMessageTelegram.mockRejectedValue(new Error("500: preview edit failed"));
+    const bot = createBot();
+    const deleteMessageSpy = vi.spyOn(bot.api, "deleteMessage");
 
-    await dispatchWithContext({ context: createContext() });
+    await dispatchWithContext({ context: createContext(), bot });
 
     expect(editMessageTelegram).toHaveBeenCalledWith(123, 999, "Hello final", expect.any(Object));
+    expect(deleteMessageSpy).toHaveBeenCalledWith(123, 999);
     expect(deliverReplies).toHaveBeenCalledWith(
       expect.objectContaining({
         replies: [expect.objectContaining({ text: "Hello final" })],
@@ -491,6 +499,109 @@ describe("dispatchTelegramMessage draft streaming", () => {
       }),
     );
     expect(draftStream.stop).toHaveBeenCalled();
+  });
+
+  it("does not send identical final payload twice in the same run", async () => {
+    dispatchReplyWithBufferedBlockDispatcher.mockImplementation(async ({ dispatcherOptions }) => {
+      await dispatcherOptions.deliver({ text: "중복 전송 방지 테스트" }, { kind: "final" });
+      await dispatcherOptions.deliver({ text: "중복 전송 방지 테스트" }, { kind: "final" });
+      return { queuedFinal: true };
+    });
+    deliverReplies.mockResolvedValue({ delivered: true });
+
+    await dispatchWithContext({ context: createContext(), streamMode: "off" });
+
+    expect(deliverReplies).toHaveBeenCalledTimes(1);
+    expect(deliverReplies).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replies: [expect.objectContaining({ text: "중복 전송 방지 테스트" })],
+      }),
+    );
+  });
+
+  it("retries identical final payload when first delivery fails", async () => {
+    dispatchReplyWithBufferedBlockDispatcher.mockImplementation(async ({ dispatcherOptions }) => {
+      try {
+        await dispatcherOptions.deliver({ text: "재시도 테스트" }, { kind: "final" });
+      } catch (err) {
+        dispatcherOptions.onError?.(err, { kind: "final" });
+      }
+      await dispatcherOptions.deliver({ text: "재시도 테스트" }, { kind: "final" });
+      return { queuedFinal: true };
+    });
+    deliverReplies
+      .mockRejectedValueOnce(new Error("temporary network error"))
+      .mockResolvedValueOnce({ delivered: true });
+
+    await dispatchWithContext({ context: createContext(), streamMode: "off" });
+
+    expect(deliverReplies).toHaveBeenCalledTimes(2);
+    expect(deliverReplies).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        replies: [expect.objectContaining({ text: "재시도 테스트" })],
+      }),
+    );
+  });
+
+  it("does not redeliver identical final payload across reruns for same inbound message", async () => {
+    dispatchReplyWithBufferedBlockDispatcher.mockImplementation(async ({ dispatcherOptions }) => {
+      await dispatcherOptions.deliver({ text: "중복 방지 재실행 테스트" }, { kind: "final" });
+      return { queuedFinal: true };
+    });
+    deliverReplies.mockResolvedValue({ delivered: true });
+
+    const context = createContext({ msg: { message_id: 9001 } as TelegramMessageContext["msg"] });
+    await dispatchWithContext({ context, streamMode: "off" });
+    await dispatchWithContext({ context, streamMode: "off" });
+
+    expect(deliverReplies).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not redeliver across reruns when inbound date is missing", async () => {
+    dispatchReplyWithBufferedBlockDispatcher.mockImplementation(async ({ dispatcherOptions }) => {
+      await dispatcherOptions.deliver({ text: "날짜 없는 재실행 중복 방지" }, { kind: "final" });
+      return { queuedFinal: true };
+    });
+    deliverReplies.mockResolvedValue({ delivered: true });
+
+    const context = createContext({
+      msg: { message_id: 9301, date: undefined } as TelegramMessageContext["msg"],
+    });
+    await dispatchWithContext({ context, streamMode: "off" });
+    await dispatchWithContext({ context, streamMode: "off" });
+
+    expect(deliverReplies).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows same text delivery for different inbound messages", async () => {
+    dispatchReplyWithBufferedBlockDispatcher.mockImplementation(async ({ dispatcherOptions }) => {
+      await dispatcherOptions.deliver({ text: "같은 텍스트 다른 요청" }, { kind: "final" });
+      return { queuedFinal: true };
+    });
+    deliverReplies.mockResolvedValue({ delivered: true });
+
+    const contextA = createContext({ msg: { message_id: 9101 } as TelegramMessageContext["msg"] });
+    const contextB = createContext({ msg: { message_id: 9102 } as TelegramMessageContext["msg"] });
+    await dispatchWithContext({ context: contextA, streamMode: "off" });
+    await dispatchWithContext({ context: contextB, streamMode: "off" });
+
+    expect(deliverReplies).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries delivery on rerun when prior attempt was not delivered", async () => {
+    dispatchReplyWithBufferedBlockDispatcher.mockImplementation(async ({ dispatcherOptions }) => {
+      await dispatcherOptions.deliver({ text: "미전달 재실행 테스트" }, { kind: "final" });
+      return { queuedFinal: true };
+    });
+    deliverReplies
+      .mockResolvedValueOnce({ delivered: false })
+      .mockResolvedValueOnce({ delivered: true });
+
+    const context = createContext({ msg: { message_id: 9201 } as TelegramMessageContext["msg"] });
+    await dispatchWithContext({ context, streamMode: "off" });
+    await dispatchWithContext({ context, streamMode: "off" });
+
+    expect(deliverReplies).toHaveBeenCalledTimes(2);
   });
 
   it("does not overwrite finalized preview when additional final payloads are sent", async () => {

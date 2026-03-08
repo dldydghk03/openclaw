@@ -113,6 +113,24 @@ describe("createAcpReplyProjector", () => {
     ]);
   });
 
+  it("suppresses internal *_update status markers", async () => {
+    const deliveries: Array<{ kind: string; text?: string }> = [];
+    const projector = createAcpReplyProjector({
+      cfg: createCfg(),
+      shouldSendToolSummaries: true,
+      deliver: async (kind, payload) => {
+        deliveries.push({ kind, text: payload.text });
+        return true;
+      },
+    });
+
+    await projector.onEvent({ type: "status", text: "usage_update" });
+    await projector.onEvent({ type: "status", text: "available_commands_update" });
+    await projector.onEvent({ type: "status", text: "planning" });
+
+    expect(deliveries).toEqual([{ kind: "tool", text: "⚙️ planning" }]);
+  });
+
   it("flushes pending streamed text before tool/status updates", async () => {
     const deliveries: Array<{ kind: string; text?: string }> = [];
     const projector = createAcpReplyProjector({

@@ -294,6 +294,7 @@ export function createLaneTextDeliverer(params: CreateLaneTextDelivererParams) {
       !hasMedia && text.length > 0 && text.length <= params.draftMaxChars && !payload.isError;
 
     if (infoKind === "final") {
+      let previewCleanupMessageId: number | undefined;
       if (laneName === "answer") {
         const archivedResult = await consumeArchivedAnswerPreviewForFinal({
           lane,
@@ -333,12 +334,25 @@ export function createLaneTextDeliverer(params: CreateLaneTextDelivererParams) {
           params.finalizedPreviewByLane[laneName] = true;
           return "preview-finalized";
         }
+        const currentPreviewMessageId = lane.stream?.messageId();
+        if (typeof currentPreviewMessageId === "number") {
+          previewCleanupMessageId = currentPreviewMessageId;
+        }
       } else if (!hasMedia && !payload.isError && text.length > params.draftMaxChars) {
         params.log(
           `telegram: preview final too long for edit (${text.length} > ${params.draftMaxChars}); falling back to standard send`,
         );
       }
       await params.stopDraftLane(lane);
+      if (typeof previewCleanupMessageId === "number") {
+        try {
+          await params.deletePreviewMessage(previewCleanupMessageId);
+        } catch (err) {
+          params.log(
+            `telegram: ${laneName} preview cleanup before final send failed (${previewCleanupMessageId}): ${String(err)}`,
+          );
+        }
+      }
       const delivered = await params.sendPayload(params.applyTextToPayload(payload, text));
       return delivered ? "sent" : "skipped";
     }

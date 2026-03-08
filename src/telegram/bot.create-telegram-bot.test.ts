@@ -5,6 +5,7 @@ import type { Chat, Message } from "@grammyjs/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { escapeRegExp, formatEnvelopeTimestamp } from "../../test/helpers/envelope-timestamp.js";
 import { withEnvAsync } from "../test-utils/env.js";
+import { resetTelegramDeliveryDedupeForTests } from "./bot-message-dispatch.js";
 import {
   answerCallbackQuerySpy,
   botCtorSpy,
@@ -53,6 +54,7 @@ const TELEGRAM_TEST_TIMINGS = {
 
 describe("createTelegramBot", () => {
   beforeEach(() => {
+    resetTelegramDeliveryDedupeForTests();
     process.env.TZ = "UTC";
   });
   afterEach(() => {

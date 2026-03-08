@@ -65,6 +65,16 @@ export type AcpReplyProjector = {
   flush: (force?: boolean) => Promise<void>;
 };
 
+function isInternalStatusUpdateEventText(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  // Some ACP runtimes emit internal progress markers (for example "usage_update").
+  // Do not surface these as user-facing tool/status messages on chat channels.
+  return /^[a-z0-9]+(?:_[a-z0-9]+)*_update$/.test(normalized);
+}
+
 export function createAcpReplyProjector(params: {
   cfg: OpenClawConfig;
   shouldSendToolSummaries: boolean;
@@ -121,6 +131,9 @@ export function createAcpReplyProjector(params: {
       return;
     }
     if (event.type === "status") {
+      if (isInternalStatusUpdateEventText(event.text)) {
+        return;
+      }
       await emitToolSummary("⚙️", event.text);
       return;
     }

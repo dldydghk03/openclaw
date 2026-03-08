@@ -45,6 +45,49 @@ const EMPTY_RESPONSE_FALLBACK = "No response generated. Please try again.";
 
 /** Minimum chars before sending first streaming message (improves push notification UX) */
 const DRAFT_MIN_INITIAL_CHARS = 30;
+const TELEGRAM_RECENT_DELIVERY_TTL_MS = 10 * 60 * 1000;
+const TELEGRAM_RECENT_DELIVERY_MAX = 2000;
+const recentTelegramDeliveries = new Map<string, number>();
+
+function pruneRecentTelegramDeliveries(nowMs: number) {
+  for (const [key, deliveredAt] of recentTelegramDeliveries) {
+    if (nowMs - deliveredAt > TELEGRAM_RECENT_DELIVERY_TTL_MS) {
+      recentTelegramDeliveries.delete(key);
+    }
+  }
+  if (recentTelegramDeliveries.size <= TELEGRAM_RECENT_DELIVERY_MAX) {
+    return;
+  }
+  const overflow = recentTelegramDeliveries.size - TELEGRAM_RECENT_DELIVERY_MAX;
+  const oldestKeys = [...recentTelegramDeliveries.entries()]
+    .toSorted((a, b) => a[1] - b[1])
+    .slice(0, overflow)
+    .map(([key]) => key);
+  for (const key of oldestKeys) {
+    recentTelegramDeliveries.delete(key);
+  }
+}
+
+function wasRecentlyDelivered(deliveryKey: string, nowMs: number): boolean {
+  const deliveredAt = recentTelegramDeliveries.get(deliveryKey);
+  if (deliveredAt == null) {
+    return false;
+  }
+  if (nowMs - deliveredAt > TELEGRAM_RECENT_DELIVERY_TTL_MS) {
+    recentTelegramDeliveries.delete(deliveryKey);
+    return false;
+  }
+  return true;
+}
+
+function markRecentlyDelivered(deliveryKey: string, nowMs: number) {
+  pruneRecentTelegramDeliveries(nowMs);
+  recentTelegramDeliveries.set(deliveryKey, nowMs);
+}
+
+export function resetTelegramDeliveryDedupeForTests() {
+  recentTelegramDeliveries.clear();
+}
 
 async function resolveStickerVisionSupport(cfg: OpenClawConfig, agentId: string) {
   try {
@@ -400,7 +443,50 @@ export const dispatchTelegramMessage = async ({
     }
     return { ...payload, text };
   };
+  const deliveredPayloadKeys = new Set<string>();
+  const buildDeliveryDedupKey = (payload: ReplyPayload): string => {
+    const buttonRows = (
+      payload.channelData?.telegram as { buttons?: TelegramInlineButtons } | undefined
+    )?.buttons;
+    const mediaUrls = Array.isArray(payload.mediaUrls) ? payload.mediaUrls : [];
+    return JSON.stringify({
+      text: payload.text ?? "",
+      mediaUrl: payload.mediaUrl ?? "",
+      mediaUrls,
+      isError: Boolean(payload.isError),
+      buttons: buttonRows ?? [],
+    });
+  };
   const sendPayload = async (payload: ReplyPayload) => {
+    const dedupKey = buildDeliveryDedupKey(payload);
+    if (deliveredPayloadKeys.has(dedupKey)) {
+      logVerbose("telegram: skipped duplicate payload delivery in same dispatch run");
+      deliveryState.markDelivered();
+      return true;
+    }
+    const nowMs = Date.now();
+    const inboundMessageIdRaw = (msg as { message_id?: unknown }).message_id;
+    const inboundMessageId =
+      typeof inboundMessageIdRaw === "number"
+        ? String(inboundMessageIdRaw)
+        : typeof inboundMessageIdRaw === "string" && inboundMessageIdRaw.trim().length > 0
+          ? inboundMessageIdRaw.trim()
+          : undefined;
+    const inboundMessageDate = (msg as { date?: unknown }).date;
+    const inboundMessageDateToken =
+      typeof inboundMessageDate === "number" ? String(inboundMessageDate) : "na";
+    const inboundThreadId =
+      typeof msg.message_thread_id === "number" ? String(msg.message_thread_id) : "none";
+    const inboundDeliveryKey = inboundMessageId
+      ? `${chatId}:${inboundMessageId}:${inboundMessageDateToken}:${inboundThreadId}:${dedupKey}`
+      : undefined;
+    if (inboundDeliveryKey && wasRecentlyDelivered(inboundDeliveryKey, nowMs)) {
+      logVerbose(
+        "telegram: skipped duplicate payload delivery for already-handled inbound message",
+      );
+      deliveryState.markDelivered();
+      return true;
+    }
     const result = await deliverReplies({
       ...deliveryBaseOptions,
       replies: [payload],
@@ -408,6 +494,10 @@ export const dispatchTelegramMessage = async ({
     });
     if (result.delivered) {
       deliveryState.markDelivered();
+      deliveredPayloadKeys.add(dedupKey);
+      if (inboundDeliveryKey) {
+        markRecentlyDelivered(inboundDeliveryKey, nowMs);
+      }
     }
     return result.delivered;
   };
