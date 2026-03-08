@@ -1212,6 +1212,46 @@ describe("runReplyAgent typing (heartbeat)", () => {
     expect(payload.text).toContain("/new");
   });
 
+  it("surfaces rate-limit fallback when embedded run returns empty payloads", async () => {
+    state.runEmbeddedPiAgentMock.mockImplementationOnce(async () => ({
+      payloads: [],
+      meta: {
+        durationMs: 1,
+        error: {
+          kind: "rate_limit",
+          message: "Rate limit reached for gpt-4o-mini (429)",
+        },
+      },
+    }));
+
+    const { run } = createMinimalRun();
+    const res = await run();
+    const payload = Array.isArray(res) ? res[0] : res;
+    expect(payload).toMatchObject({
+      text: expect.stringContaining("모델 호출 한도"),
+    });
+  });
+
+  it("surfaces generic embedded error when run returns empty payloads", async () => {
+    state.runEmbeddedPiAgentMock.mockImplementationOnce(async () => ({
+      payloads: [],
+      meta: {
+        durationMs: 1,
+        error: {
+          kind: "unknown",
+          message: "provider crashed unexpectedly",
+        },
+      },
+    }));
+
+    const { run } = createMinimalRun();
+    const res = await run();
+    const payload = Array.isArray(res) ? res[0] : res;
+    expect(payload).toMatchObject({
+      text: expect.stringContaining("Agent failed before reply"),
+    });
+  });
+
   it("surfaces overflow fallback when embedded payload text is whitespace-only", async () => {
     state.runEmbeddedPiAgentMock.mockImplementationOnce(async () => ({
       payloads: [{ text: "   \n\t  ", isError: true }],

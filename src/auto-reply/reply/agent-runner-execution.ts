@@ -13,6 +13,10 @@ import {
 } from "../../agents/pi-embedded-helpers.js";
 import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import {
+  isRateLimitErrorText,
+  resolveRateLimitIntentFallbackPayload,
+} from "../../agents/rate-limit-intent-fallback.js";
+import {
   resolveGroupSessionKey,
   resolveSessionTranscriptPath,
   type SessionEntry,
@@ -97,6 +101,13 @@ export async function runAgentTurnWithFallback(params: {
   storePath?: string;
   resolvedVerboseLevel: VerboseLevel;
 }): Promise<AgentRunLoopResult> {
+  const isRateLimitErrorMessage = (message: string): boolean => {
+    const lower = String(message || "").toLowerCase();
+    return (
+      lower.includes("rate limit") || lower.includes("too many requests") || /\b429\b/.test(lower)
+    );
+  };
+
   const TRANSIENT_HTTP_RETRY_DELAY_MS = 2_500;
   let didLogHeartbeatStrip = false;
   let autoCompactionCompleted = false;
@@ -119,6 +130,18 @@ export async function runAgentTurnWithFallback(params: {
       isHeartbeat: params.isHeartbeat,
     });
   }
+
+  const eagerIntentPayload = resolveRateLimitIntentFallbackPayload({
+    workspaceDir: params.followupRun.run.workspaceDir,
+    rawText: params.commandBody,
+  });
+  if (eagerIntentPayload) {
+    return {
+      kind: "final",
+      payload: eagerIntentPayload,
+    };
+  }
+
   let runResult: Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
   let fallbackProvider = params.followupRun.run.provider;
   let fallbackModel = params.followupRun.run.model;
@@ -590,13 +613,57 @@ export async function runAgentTurnWithFallback(params: {
   // overflow errors were returned as embedded error payloads.
   const finalEmbeddedError = runResult?.meta?.error;
   const hasPayloadText = runResult?.payloads?.some((p) => p.text?.trim());
-  if (finalEmbeddedError && isContextOverflowError(finalEmbeddedError.message) && !hasPayloadText) {
+  const rawUserText =
+    params.commandBody.trim() ||
+    params.followupRun.summaryLine?.trim() ||
+    params.followupRun.prompt;
+  const rateLimitPayloadText = runResult?.payloads
+    ?.map((payload) => String(payload.text || ""))
+    .find((text) => isRateLimitErrorText(text));
+
+  if (rateLimitPayloadText) {
+    const fallbackPayload = resolveRateLimitIntentFallbackPayload({
+      workspaceDir: params.followupRun.run.workspaceDir,
+      rawText: rawUserText,
+    }) ?? { text: "⚠️ 모델 호출 한도에 도달했습니다. 잠시 후 다시 시도해 주세요." };
     return {
       kind: "final",
-      payload: {
-        text: "⚠️ Context overflow — this conversation is too large for the model. Use /new to start a fresh session.",
-      },
+      payload: fallbackPayload,
     };
+  }
+
+  if (finalEmbeddedError && !hasPayloadText) {
+    const message = String(finalEmbeddedError.message || "");
+    if (isContextOverflowError(message)) {
+      return {
+        kind: "final",
+        payload: {
+          text: "⚠️ Context overflow — this conversation is too large for the model. Use /new to start a fresh session.",
+        },
+      };
+    }
+    if (isRateLimitErrorMessage(message)) {
+      const fallbackPayload = resolveRateLimitIntentFallbackPayload({
+        workspaceDir: params.followupRun.run.workspaceDir,
+        rawText: rawUserText,
+      }) ?? { text: "⚠️ 모델 호출 한도에 도달했습니다. 잠시 후 다시 시도해 주세요." };
+      return {
+        kind: "final",
+        payload: fallbackPayload,
+      };
+    }
+    const safeMessage = sanitizeUserFacingText(message, { errorContext: true }).replace(
+      /\.\s*$/,
+      "",
+    );
+    if (safeMessage.trim()) {
+      return {
+        kind: "final",
+        payload: {
+          text: `⚠️ Agent failed before reply: ${safeMessage}.\nLogs: openclaw logs --follow`,
+        },
+      };
+    }
   }
 
   return {

@@ -27,6 +27,10 @@ import {
   resolveThinkingDefault,
 } from "../agents/model-selection.js";
 import { runEmbeddedPiAgent } from "../agents/pi-embedded.js";
+import {
+  isRateLimitErrorText,
+  resolveRateLimitIntentFallbackPayload,
+} from "../agents/rate-limit-intent-fallback.js";
 import { buildWorkspaceSkillSnapshot } from "../agents/skills.js";
 import { getSkillsSnapshotVersion } from "../agents/skills/refresh.js";
 import { resolveAgentTimeoutMs } from "../agents/timeout.js";
@@ -357,6 +361,42 @@ export async function agentCommand(
       throw acpResolution.error;
     }
 
+    const earlyIntentPayload = resolveRateLimitIntentFallbackPayload({
+      workspaceDir,
+      rawText: body,
+    });
+    if (earlyIntentPayload) {
+      const earlyResult = {
+        payloads: [earlyIntentPayload],
+        meta: {
+          durationMs: 0,
+          agentMeta: {
+            sessionId,
+            provider: configuredModel.provider,
+            model: configuredModel.model,
+            lastCallUsage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+          aborted: false,
+        },
+      } as Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
+      return await deliverAgentCommandResult({
+        cfg,
+        deps,
+        runtime,
+        opts,
+        outboundSession,
+        sessionEntry,
+        result: earlyResult,
+        payloads: earlyResult.payloads,
+      });
+    }
+
     if (acpResolution?.kind === "ready" && sessionKey) {
       const startedAt = Date.now();
       registerAgentRunContext(runId, {
@@ -445,7 +485,33 @@ export async function agentCommand(
         },
       });
 
-      const finalText = streamedText.trim();
+      let finalText = streamedText.trim();
+      if (!finalText || isRateLimitErrorText(finalText)) {
+        const fallbackPayload = resolveRateLimitIntentFallbackPayload({
+          workspaceDir,
+          rawText: body,
+        }) ?? {
+          text: "⚠️ 모델 호출 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.",
+        };
+        const fallbackResult = {
+          payloads: [fallbackPayload],
+          meta: {
+            durationMs: Date.now() - startedAt,
+            aborted: opts.abortSignal?.aborted === true,
+            stopReason,
+          },
+        };
+        return await deliverAgentCommandResult({
+          cfg,
+          deps,
+          runtime,
+          opts,
+          outboundSession,
+          sessionEntry,
+          result: fallbackResult,
+          payloads: fallbackResult.payloads,
+        });
+      }
       const payloads = finalText
         ? [
             {
@@ -693,6 +759,59 @@ export async function agentCommand(
       sessionEntry = resolvedSessionFile.sessionEntry;
     }
 
+    const eagerIntentPayload = resolveRateLimitIntentFallbackPayload({
+      workspaceDir,
+      rawText: body,
+    });
+    if (eagerIntentPayload) {
+      const eagerResult = {
+        payloads: [eagerIntentPayload],
+        meta: {
+          durationMs: 0,
+          agentMeta: {
+            sessionId,
+            provider,
+            model,
+            lastCallUsage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+          aborted: false,
+        },
+      } as Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
+
+      if (sessionStore && sessionKey) {
+        await updateSessionStoreAfterAgentRun({
+          cfg,
+          contextTokensOverride: agentCfg?.contextTokens,
+          sessionId,
+          sessionKey,
+          storePath,
+          sessionStore,
+          defaultProvider: provider,
+          defaultModel: model,
+          fallbackProvider: provider,
+          fallbackModel: model,
+          result: eagerResult,
+        });
+      }
+
+      return await deliverAgentCommandResult({
+        cfg,
+        deps,
+        runtime,
+        opts,
+        outboundSession,
+        sessionEntry,
+        result: eagerResult,
+        payloads: eagerResult.payloads,
+      });
+    }
+
     const startedAt = Date.now();
     let lifecycleEnded = false;
 
@@ -810,7 +929,38 @@ export async function agentCommand(
       });
     }
 
-    const payloads = result.payloads ?? [];
+    let payloads = result.payloads ?? [];
+    const firstRateLimitPayload = payloads.find((payload) =>
+      isRateLimitErrorText(String(payload.text || "")),
+    );
+    if (firstRateLimitPayload) {
+      const fallbackPayload = resolveRateLimitIntentFallbackPayload({
+        workspaceDir,
+        rawText: body,
+      }) ?? { text: "⚠️ 모델 호출 한도에 도달했습니다. 잠시 후 다시 시도해 주세요." };
+      payloads = [fallbackPayload];
+      result = {
+        ...result,
+        payloads,
+      };
+    } else {
+      const hasTextOrMedia = payloads.some(
+        (payload) => String(payload.text || "").trim().length > 0 || Boolean(payload.mediaUrl),
+      );
+      if (!hasTextOrMedia) {
+        const fallbackPayload = resolveRateLimitIntentFallbackPayload({
+          workspaceDir,
+          rawText: body,
+        });
+        if (fallbackPayload) {
+          payloads = [fallbackPayload];
+          result = {
+            ...result,
+            payloads,
+          };
+        }
+      }
+    }
     return await deliverAgentCommandResult({
       cfg,
       deps,
