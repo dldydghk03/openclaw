@@ -1,0 +1,42 @@
+{
+  "job_id": "finance-ledger-apply-YYYYMMDD-HHMM",
+  "created_at": "YYYY-MM-DDTHH:mm:ss+09:00",
+  "profile": "personal",
+  "target_system": "finance_ledger",
+  "operation": "append_reconciled_transactions",
+  "mode": "preview",
+  "preview_file": "50-Outputs/Finance/YYYY-MM finance-reconcile-preview.md",
+  "approval_id": "",
+  "approval_status": "missing",
+  "anchor_required": false,
+  "anchor_verified": false,
+  "anchor_evidence": [],
+  "expected_changes": [
+    {
+      "target": "Finance/YYYY-MM_ledger.md",
+      "action": "append",
+      "dedupe_key": "YYYY-MM-DD|amount|direction|normalized-payee|account",
+      "summary": "Append one reviewed transaction only if it is not duplicate or uncategorized."
+    }
+  ],
+  "apply_allowed": false,
+  "apply_blockers": ["missing approval_id", "mode is preview"],
+  "apply_result": {
+    "status": "not_run",
+    "changed_count": 0,
+    "errors": []
+  },
+  "read_back_result": {
+    "status": "not_run",
+    "verified_count": 0,
+    "missing": [],
+    "unexpected": []
+  },
+  "repair_required": false,
+  "notes": [
+    "Append-only: never rewrite the month ledger during reconcile apply.",
+    "Each append candidate must have exactly one dedupe key.",
+    "Uncategorized and duplicate candidates stay pending and must not apply.",
+    "After append, read back every affected month and verify each dedupe key appears exactly once."
+  ]
+}

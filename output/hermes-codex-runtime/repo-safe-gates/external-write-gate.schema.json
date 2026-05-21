@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HermesExternalWriteGate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "job_id",
+    "created_at",
+    "profile",
+    "target_system",
+    "operation",
+    "mode",
+    "preview_file",
+    "approval_id",
+    "approval_status",
+    "anchor_required",
+    "anchor_verified",
+    "anchor_evidence",
+    "expected_changes",
+    "apply_allowed",
+    "apply_blockers",
+    "apply_result",
+    "read_back_result",
+    "repair_required",
+    "notes"
+  ],
+  "properties": {
+    "job_id": { "type": "string" },
+    "created_at": { "type": "string" },
+    "profile": {
+      "type": "string",
+      "enum": ["research", "personal", "ops", "codex"]
+    },
+    "target_system": {
+      "type": "string",
+      "enum": [
+        "apple_calendar",
+        "finance_ledger",
+        "filesystem",
+        "openclaw_state",
+        "github_pr",
+        "other_external"
+      ]
+    },
+    "operation": { "type": "string" },
+    "mode": {
+      "type": "string",
+      "enum": ["preview", "approved_apply", "read_back_only", "repair"]
+    },
+    "preview_file": { "type": "string" },
+    "approval_id": { "type": "string" },
+    "approval_status": {
+      "type": "string",
+      "enum": ["missing", "pending", "approved", "rejected", "not_required"]
+    },
+    "anchor_required": { "type": "boolean" },
+    "anchor_verified": { "type": "boolean" },
+    "anchor_evidence": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "expected_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["target", "action", "dedupe_key", "summary"],
+        "properties": {
+          "target": { "type": "string" },
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "delete",
+              "append",
+              "move",
+              "archive",
+              "freeze",
+              "unfreeze",
+              "no_op"
+            ]
+          },
+          "dedupe_key": { "type": "string" },
+          "summary": { "type": "string" }
+        }
+      }
+    },
+    "apply_allowed": { "type": "boolean" },
+    "apply_blockers": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "apply_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "changed_count", "errors"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["not_run", "ok", "partial", "failed"]
+        },
+        "changed_count": { "type": "integer", "minimum": 0 },
+        "errors": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "read_back_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "verified_count", "missing", "unexpected"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["not_run", "ok", "partial", "failed"]
+        },
+        "verified_count": { "type": "integer", "minimum": 0 },
+        "missing": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "unexpected": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "repair_required": { "type": "boolean" },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

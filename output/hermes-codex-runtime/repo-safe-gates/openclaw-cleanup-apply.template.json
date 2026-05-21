@@ -1,0 +1,46 @@
+{
+  "job_id": "openclaw-cleanup-apply-YYYYMMDD-HHMM",
+  "created_at": "YYYY-MM-DDTHH:mm:ss+09:00",
+  "profile": "ops",
+  "target_system": "filesystem",
+  "operation": "archive_or_delete_openclaw_residue",
+  "mode": "preview",
+  "preview_file": "50-Outputs/OpenClaw-Audit/YYYY-MM-DD cleanup-manifest.md",
+  "approval_id": "",
+  "approval_status": "missing",
+  "anchor_required": false,
+  "anchor_verified": false,
+  "anchor_evidence": [],
+  "expected_changes": [
+    {
+      "target": "relative/path/to/archive-candidate.md",
+      "action": "archive",
+      "dedupe_key": "sha256-or-path-plus-size-plus-mtime",
+      "summary": "Archive one classified residue file after stable keep/promote/archive/delete manifest review."
+    }
+  ],
+  "apply_allowed": false,
+  "apply_blockers": [
+    "missing approval_id",
+    "stable keep/promote/archive/delete manifest not attached",
+    "mode is preview"
+  ],
+  "apply_result": {
+    "status": "not_run",
+    "changed_count": 0,
+    "errors": []
+  },
+  "read_back_result": {
+    "status": "not_run",
+    "verified_count": 0,
+    "missing": [],
+    "unexpected": []
+  },
+  "repair_required": false,
+  "notes": [
+    "Keep and promote candidates must be resolved before archive/delete.",
+    "Delete requires archive-first evidence plus separate approval.",
+    "Post-apply read-back must verify source and target existence for every moved file.",
+    "OpenClaw state cleanup happens last, after classification is stable."
+  ]
+}
