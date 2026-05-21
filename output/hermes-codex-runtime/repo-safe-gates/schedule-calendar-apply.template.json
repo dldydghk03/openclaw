@@ -1,0 +1,47 @@
+{
+  "job_id": "schedule-calendar-apply-YYYYMMDD-HHMM",
+  "created_at": "YYYY-MM-DDTHH:mm:ss+09:00",
+  "profile": "personal",
+  "target_system": "apple_calendar",
+  "operation": "create_update_delete_schedule_events",
+  "mode": "preview",
+  "preview_file": "50-Outputs/Schedule/YYYY-MM-DD schedule-preview.md",
+  "approval_id": "",
+  "approval_status": "missing",
+  "anchor_required": true,
+  "anchor_verified": false,
+  "anchor_evidence": [
+    "1주차 월요일 = YYYY-MM-DD",
+    "known real class sample day = YYYY-MM-DD",
+    "duplicate-title sample day reviewed"
+  ],
+  "expected_changes": [
+    {
+      "target": "calendar:event:YYYY-MM-DDT08:00/title",
+      "action": "create",
+      "dedupe_key": "YYYY-MM-DD|08:00|09:00|normalized-title",
+      "summary": "Create one verified schedule event after anchor confirmation."
+    }
+  ],
+  "apply_allowed": false,
+  "apply_blockers": ["missing approval_id", "anchor_verified is false", "mode is preview"],
+  "apply_result": {
+    "status": "not_run",
+    "changed_count": 0,
+    "errors": []
+  },
+  "read_back_result": {
+    "status": "not_run",
+    "verified_count": 0,
+    "missing": [],
+    "unexpected": []
+  },
+  "repair_required": false,
+  "notes": [
+    "0교시=08:00 and each period increments by exactly one hour unless the source says otherwise.",
+    "Do not dedupe by date + title alone.",
+    "Adjacent same-title periods on the same date must merge into one continuous event.",
+    "Non-adjacent same-title periods must remain separate events.",
+    "Read-back verifies every expected minute key after merge."
+  ]
+}
