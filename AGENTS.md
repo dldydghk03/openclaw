@@ -7,6 +7,15 @@
 - GitHub linking footgun: don’t wrap issue/PR refs like `#24643` in backticks when you want auto-linking. Use plain `#24643` (optionally add full URL).
 - Security advisory analysis: before triage/severity decisions, read `SECURITY.md` to align with OpenClaw's trust model and design boundaries.
 
+## Review Guidelines
+
+- Treat bridge, prompt, playbook, automation, migration, and approval-gate changes as production workflow changes, not just documentation changes.
+- Flag as P1 any Apple Calendar, finance ledger, file move/delete, migration, or external upload path that can apply without `preview_file`, `approval_id`, and post-apply read-back.
+- Flag as P1 any date-anchored schedule workflow that can apply without an explicit anchor check and `anchor_verified=true`.
+- Flag as P1 any OpenClaw cleanup or migration change that deletes, moves, or rewrites state before a stable `keep/promote/archive/delete` manifest exists.
+- Flag as P1 any Hermes shadow promotion that writes outside `00-Core` or `30-Playbooks`, or promotes fewer than 7 days of shadow evidence without an explicit manual override.
+- Flag as P1 any prompt/schema change where output field names drift from the corresponding JSON schema or downstream script expectations.
+
 ## Project Structure & Module Organization
 
 - Source code: `src/` (CLI wiring in `src/cli`, commands in `src/commands`, web provider in `src/provider-web.ts`, infra in `src/infra`, media pipeline in `src/media`).
