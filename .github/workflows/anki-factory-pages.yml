@@ -72,13 +72,17 @@ jobs:
           .github/skills/anki-factory-quality/scripts/run-smoke.sh | tee anki-factory-ci-artifacts/smoke-report.json
 
       - name: Build static quality dashboard
+        env:
+          ANKI_FACTORY_REF_NAME: ${{ github.ref_name }}
+          ANKI_FACTORY_REPO: ${{ github.repository }}
+          ANKI_FACTORY_SHA: ${{ github.sha }}
         run: |
           python3 tools/anki-factory/scripts/build_quality_dashboard.py \
             --smoke-report anki-factory-ci-artifacts/smoke-report.json \
             --out-dir anki-factory-pages \
-            --repo "${{ github.repository }}" \
-            --ref "${{ github.ref_name }}" \
-            --sha "${{ github.sha }}"
+            --repo "$ANKI_FACTORY_REPO" \
+            --ref "$ANKI_FACTORY_REF_NAME" \
+            --sha "$ANKI_FACTORY_SHA"
 
       - name: Upload dashboard artifact
         if: always()
