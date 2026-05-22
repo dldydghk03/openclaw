@@ -1,5 +1,5 @@
 ---
-applyTo: "tools/anki-factory/**,docs/anki-factory/**,.github/agents/anki-factory-*.agent.md,.github/skills/anki-factory-quality/**,.github/hooks/anki-factory-*.json,.github/hooks/anki-factory-*.sh,.github/workflows/anki-factory-ci.yml"
+applyTo: "tools/anki-factory/**,docs/anki-factory/**,.github/copilot-instructions.md,.github/instructions/anki-factory.instructions.md,.github/agents/anki-factory-maintainer.agent.md,.github/skills/anki-factory-quality/**,.github/hooks/anki-factory-*.json,.github/hooks/anki-factory-*.sh,.github/workflows/anki-factory-ci.yml"
 ---
 
 # Anki Factory Copilot Review Rules

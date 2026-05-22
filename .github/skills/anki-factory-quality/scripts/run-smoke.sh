@@ -14,3 +14,4 @@ for script in sorted(Path("tools/anki-factory/scripts").glob("*.py")):
     py_compile.compile(str(script), cfile=str(out_dir / f"{script.name}.pyc"), doraise=True)
 PY
 python3 tools/anki-factory/scripts/validate_public_fixtures.py
+python3 tools/anki-factory/scripts/validate_copilot_integration.py

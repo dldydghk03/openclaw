@@ -54,6 +54,11 @@ Copilot instructions are useful but still advisory. Anki Factory therefore uses 
 - A custom Copilot agent narrows the work to public-safe engine maintenance.
 - A Copilot skill gives the agent a repeatable smoke command and scope boundary.
 - CI and the `agentStop` hook run deterministic checks so metadata leaks, weak jokbo explanations, table formatting drift, and note-type drift are blocked even if a reviewer misses them.
+- `validate_copilot_integration.py` checks that the instruction files, custom agent, skill, hook, and CI all point at the same smoke command and preserve the same public/private boundary.
+
+## PR Check Interpretation
+
+When this workflow is first introduced on a branch, GitHub may not list the new workflow on the repository default branch until the workflow file exists there. In that phase, the local smoke command and the Copilot `agentStop` hook are the authoritative checks for this integration. Existing repository workflows can still fail for unrelated repository-secret setup issues; those failures should be separated from Anki Factory validation by checking the failing job log.
 
 ## Local-Only Data Boundary
 

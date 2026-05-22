@@ -36,6 +36,7 @@ Not allowed:
 5. Tables should use border, collapsed borders, full width, centered text, padding, and gray header.
 6. Basic card fronts should be compact titles.
 7. APKG workflows must preserve preview, approval, export, and read-back.
+8. Copilot instructions, agent, skill, hook, and CI must all delegate to the same smoke command.
 
 ## Commands
 
