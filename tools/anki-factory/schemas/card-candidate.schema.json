@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.local/anki-agent/card-candidate.schema.json",
+  "title": "Anki Factory Card Candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "candidate_id",
+    "note_type_key",
+    "fields",
+    "source_refs",
+    "learning_intent",
+    "likely_confusion",
+    "exam_relevance"
+  ],
+  "properties": {
+    "candidate_id": {
+      "type": "string",
+      "minLength": 3
+    },
+    "note_type_key": {
+      "type": "string",
+      "enum": ["standard_basic", "standard_cloze", "standard_new_jokbo"]
+    },
+    "fields": {
+      "type": "object",
+      "minProperties": 2,
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_type", "locator"],
+        "properties": {
+          "source_type": {
+            "type": "string",
+            "enum": [
+              "lecture",
+              "jokbo",
+              "previous_anki_apkg",
+              "current_year_jokbo",
+              "reference_apkg",
+              "quality_reference_jokbo",
+              "tcheck",
+              "local_reference",
+              "external_reference"
+            ]
+          },
+          "locator": {
+            "type": "string",
+            "minLength": 1
+          },
+          "quote": {
+            "type": "string"
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "learning_intent": {
+      "type": "string",
+      "minLength": 5
+    },
+    "likely_confusion": {
+      "type": "string",
+      "minLength": 3
+    },
+    "exam_relevance": {
+      "type": "string",
+      "minLength": 3
+    },
+    "why_correct": {
+      "type": "string"
+    },
+    "why_others_wrong": {
+      "type": "string"
+    },
+    "student_friendly_explanation": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "deck_path": {
+      "type": "string"
+    },
+    "problem_classification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_assignment",
+        "lecture_support",
+        "lecture_evidence",
+        "missing_or_external_points",
+        "visible_caveat_required"
+      ],
+      "properties": {
+        "source_assignment": {
+          "type": "string",
+          "enum": [
+            "matching_previous_anki",
+            "current_year_jokbo",
+            "older_jokbo_supplement",
+            "manual_user_supplied"
+          ]
+        },
+        "lecture_support": {
+          "type": "string",
+          "enum": ["direct", "partial", "not_found"]
+        },
+        "lecture_evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_or_external_points": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "visible_caveat_required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "manual_review_required": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "note_type_key": {
+            "const": "standard_new_jokbo"
+          }
+        },
+        "required": ["note_type_key"]
+      },
+      "then": {
+        "required": ["deck_path", "problem_classification"],
+        "properties": {
+          "deck_path": {
+            "pattern": "^03\\. 족보"
+          },
+          "fields": {
+            "required": ["문제번호", "본문", "정답 및 해설"],
+            "properties": {
+              "문제번호": {
+                "pattern": "^\\(\\d{2}-신장학-\\d{1,3}\\)$"
+              },
+              "본문": {
+                "pattern": "^신장내과\\s+.+교수님,\\s*.+"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

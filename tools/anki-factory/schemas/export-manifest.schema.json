@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.local/anki-agent/export-manifest.schema.json",
+  "title": "Anki Factory Export Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "source_bundle_id",
+    "standard_contract_version",
+    "preview_file",
+    "approval_id",
+    "export_path",
+    "readback_report"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string"
+    },
+    "source_bundle_id": {
+      "type": "string"
+    },
+    "standard_contract_version": {
+      "type": "string"
+    },
+    "preview_file": {
+      "type": "string"
+    },
+    "approval_id": {
+      "type": "string",
+      "minLength": 3
+    },
+    "export_path": {
+      "type": "string"
+    },
+    "readback_report": {
+      "type": "string"
+    },
+    "card_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "note_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "anki_card_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "note_type_counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "deck_name": {
+      "type": "string"
+    },
+    "subdeck_card_counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "format_gate_ok": {
+      "type": "boolean"
+    },
+    "quality_gate_ok": {
+      "type": "boolean"
+    },
+    "jokbo_source_policy_ok": {
+      "type": "boolean"
+    },
+    "current_year_jokbo_available": {
+      "type": "boolean"
+    },
+    "self_review_ok": {
+      "type": "boolean"
+    },
+    "novice_understanding_gate_ok": {
+      "type": "boolean"
+    },
+    "iterative_loop_ok": {
+      "type": "boolean"
+    },
+    "apkg_readback_ok": {
+      "type": "boolean"
+    }
+  }
+}

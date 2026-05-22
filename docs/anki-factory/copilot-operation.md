@@ -1,0 +1,67 @@
+# Copilot Operation For Anki Factory
+
+GitHub Copilot is used as an engine-maintenance layer for Anki Factory. It must not handle private lecture notes, real APKG source decks, recovered exam files, or run outputs.
+
+## Target Architecture
+
+```text
+Private source material
+-> local Anki Factory generation
+-> preview APKG and human review pack
+
+Public-safe engine code
+-> GitHub PR
+-> Copilot review, Copilot agent, CI fixtures
+-> improved local Anki Factory
+```
+
+## Copilot Should Handle
+
+- Quality gate implementation and refactors.
+- JSON schema changes.
+- Synthetic fixture creation.
+- CI and hook scripts.
+- APKG profiler and read-back validation code.
+- Documentation that contains only public-safe synthetic examples.
+- Regression tests for previously observed failure modes.
+
+## Copilot Must Not Handle
+
+- Real lecture notes, transcripts, screenshots, Drive exports, or APKGs.
+- Real recovered exam-question content.
+- Private `output/hermes-codex-runtime/anki-agent/runs/**` artifacts.
+- Obsidian vault material that contains personal study data.
+- Any code path that imports private sources into GitHub.
+- Any change to standardized note type names, fields, templates, or CSS.
+
+## Review Priorities
+
+Treat these as P1 review findings:
+
+- Non-standard note type creation or template/field drift.
+- APKG export without preview, approval, and read-back.
+- Visible metadata leakage into card fields.
+- Jokbo cards with visible options but answer-only explanations.
+- Missing current-lecture support caveat for unsupported jokbo items.
+- Source code or fixtures containing absolute local paths, private names, or real course-source text.
+- CI that passes without checking both positive and negative synthetic fixtures.
+
+## Why This Is Layered
+
+Copilot instructions are useful but still advisory. Anki Factory therefore uses four layers instead of relying on prompt text alone:
+
+- Repository and path-specific Copilot instructions describe the expected review behavior.
+- A custom Copilot agent narrows the work to public-safe engine maintenance.
+- A Copilot skill gives the agent a repeatable smoke command and scope boundary.
+- CI and the `agentStop` hook run deterministic checks so metadata leaks, weak jokbo explanations, table formatting drift, and note-type drift are blocked even if a reviewer misses them.
+
+## Local-Only Data Boundary
+
+The local `output/hermes-codex-runtime/anki-agent/runs/**` directory can be used by Codex/Hermes for private runs, but it is not a Copilot input. When a bug is found from a private run, reduce it to a synthetic fixture before opening a GitHub PR.
+
+## Recommended Pull Request Shape
+
+- One PR per gate, schema, or workflow change.
+- Include a synthetic good fixture and a synthetic bad fixture when adding a rule.
+- Include the exact command used to validate fixtures.
+- Do not include generated APKGs or private decks.

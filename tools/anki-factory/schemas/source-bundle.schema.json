@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.local/anki-agent/source-bundle.schema.json",
+  "title": "Anki Factory Source Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["bundle_id", "mode", "created_at", "lecture", "jokbo", "tcheck", "source_priority"],
+  "properties": {
+    "bundle_id": {
+      "type": "string",
+      "minLength": 3
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["exam_production", "lecture_only_preview", "reference_profile_only"]
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "course": {
+      "type": "string"
+    },
+    "lecture_title": {
+      "type": "string"
+    },
+    "professor": {
+      "type": "string"
+    },
+    "lecture": {
+      "$ref": "#/$defs/sourceGroup"
+    },
+    "jokbo": {
+      "$ref": "#/$defs/sourceGroup"
+    },
+    "previous_anki": {
+      "$ref": "#/$defs/sourceGroup"
+    },
+    "current_year_jokbo": {
+      "$ref": "#/$defs/sourceGroup"
+    },
+    "jokbo_style_references": {
+      "$ref": "#/$defs/sourceGroup"
+    },
+    "tcheck": {
+      "$ref": "#/$defs/sourceGroup"
+    },
+    "jokbo_source_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "previous_anki_required": {
+          "type": "boolean",
+          "default": true
+        },
+        "current_year_required_for_exam_production": {
+          "type": "boolean",
+          "default": true
+        },
+        "style_reference_authors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["이원재", "한상준"]
+        },
+        "explanation_policy": {
+          "type": "string"
+        }
+      }
+    },
+    "problem_classification_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "assignment_source": {
+          "type": "string"
+        },
+        "lecture_support_source": {
+          "type": "string"
+        },
+        "not_found_visible_caveat": {
+          "type": "string"
+        },
+        "partial_visible_caveat": {
+          "type": "string"
+        },
+        "current_run_result": {
+          "type": "string"
+        }
+      }
+    },
+    "reference_apkg_profiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "source_priority": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "jokbo",
+          "previous_anki_apkg",
+          "current_year_jokbo",
+          "lecture",
+          "tcheck",
+          "local_reference",
+          "external_reference"
+        ]
+      },
+      "minItems": 1
+    },
+    "missing_inputs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "sourceFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "kind"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["pdf", "pptx", "docx", "xlsx", "md", "txt", "image", "apkg", "unknown"]
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "hydrated": {
+          "type": "boolean",
+          "default": false
+        },
+        "page_range": {
+          "type": "string"
+        },
+        "source_note": {
+          "type": "string"
+        }
+      }
+    },
+    "sourceGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "available", "files"],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sourceFile"
+          }
+        }
+      }
+    }
+  }
+}

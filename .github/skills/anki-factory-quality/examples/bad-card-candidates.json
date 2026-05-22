@@ -1,0 +1,19 @@
+[
+  {
+    "candidate_id": "skill-bad-metadata-001",
+    "note_type_key": "standard_basic",
+    "fields": {
+      "Front": "메타데이터 노출",
+      "Back": "source_refs: 이 문구가 카드에 보이면 실패해야 합니다."
+    },
+    "source_refs": [
+      {
+        "source_type": "lecture",
+        "locator": "synthetic://example#bad"
+      }
+    ],
+    "learning_intent": "메타데이터 노출을 막는다.",
+    "likely_confusion": "metadata와 visible field 혼동",
+    "exam_relevance": "fixture"
+  }
+]

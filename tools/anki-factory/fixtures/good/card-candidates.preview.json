@@ -1,0 +1,72 @@
+[
+  {
+    "candidate_id": "synthetic-basic-001",
+    "note_type_key": "standard_basic",
+    "fields": {
+      "Front": "전해질 이상 감별",
+      "Back": "먼저 증상과 검사 방향을 나눠 보면 됩니다. 증상이 있고 수치 변화가 크면 응급 처치가 먼저이고, 안정적이면 원인 평가로 넘어갑니다."
+    },
+    "deck_path": "01. JBL 개념 흐름",
+    "source_refs": [
+      {
+        "source_type": "lecture",
+        "locator": "synthetic://lecture#electrolyte-1",
+        "quote": "증상과 검사 방향을 구분한다."
+      }
+    ],
+    "learning_intent": "기본 감별 흐름을 잡는다.",
+    "likely_confusion": "수치만 보고 증상 평가를 건너뛰는 것",
+    "exam_relevance": "보기에서 응급 처치와 원인 평가를 섞어 묻는 경우에 대비한다.",
+    "tags": ["synthetic", "basic"]
+  },
+  {
+    "candidate_id": "synthetic-cloze-table-001",
+    "note_type_key": "standard_cloze",
+    "fields": {
+      "Text": "검사 방향은 표처럼 비교하면 됩니다.<br><table border=\"1\" style=\"border-collapse:collapse;width:100%;text-align:center\" cellpadding=\"5\"><tr style=\"background-color:#f2f2f2\"><th>상황</th><th>먼저 볼 것</th><th>판단</th></tr><tr><td>증상 있음</td><td>{{c1::심전도}}</td><td>응급 처치 우선</td></tr><tr><td>증상 없음</td><td>{{c2::원인 평가}}</td><td>반복 검사 확인</td></tr></table>",
+      "Back Extra": "표는 전체를 외우기보다 증상 유무에 따라 검사 방향이 갈린다는 점만 확인하면 됩니다."
+    },
+    "deck_path": "02. 비교표 Cloze",
+    "source_refs": [
+      {
+        "source_type": "lecture",
+        "locator": "synthetic://lecture#table-1"
+      }
+    ],
+    "learning_intent": "비교표에서 핵심 판단 셀만 회상한다.",
+    "likely_confusion": "표 전체를 외우려고 하는 것",
+    "exam_relevance": "상황별 우선순위 선택 문제에 대비한다.",
+    "tags": ["synthetic", "cloze"]
+  },
+  {
+    "candidate_id": "synthetic-jokbo-001",
+    "note_type_key": "standard_new_jokbo",
+    "fields": {
+      "문제번호": "(25-신장학-86)",
+      "본문": "신장내과 예시 교수님, 합성 강의<br>다음 중 증상이 있는 전해질 이상에서 먼저 확인할 검사는?<br>① 식이력<br>② 심전도<br>③ 가족력<br>④ 피부 생검<br>⑤ 유전자 검사",
+      "정답 및 해설": "정답: ② 심전도.<br>증상이 있는 전해질 이상에서는 심장 전도 이상을 먼저 확인해야 해서 ②가 답입니다.<br>① 식이력은 원인 평가에는 도움이 되지만 첫 확인 검사는 아닙니다.<br>② 심전도는 응급 처치 여부를 결정하는 데 바로 연결됩니다.<br>③ 가족력은 만성 원인 평가에 가깝습니다.<br>④ 피부 생검은 이 상황과 거리가 있습니다.<br>⑤ 유전자 검사는 급성 판단보다 뒤에 옵니다."
+    },
+    "deck_path": "03. 족보 원문형",
+    "source_refs": [
+      {
+        "source_type": "previous_anki_apkg",
+        "locator": "synthetic://previous-anki#25-86"
+      },
+      {
+        "source_type": "lecture",
+        "locator": "synthetic://lecture#electrolyte-2"
+      }
+    ],
+    "problem_classification": {
+      "source_assignment": "matching_previous_anki",
+      "lecture_support": "direct",
+      "lecture_evidence": ["synthetic://lecture#electrolyte-2"],
+      "missing_or_external_points": [],
+      "visible_caveat_required": false
+    },
+    "learning_intent": "복원문항에서 정답과 오답 판단 기준을 확인한다.",
+    "likely_confusion": "정답 번호만 외우고 첫 검사 이유를 놓치는 것",
+    "exam_relevance": "보기별 우선순위 판단 문제에 대비한다.",
+    "tags": ["synthetic", "jokbo"]
+  }
+]

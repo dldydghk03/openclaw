@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.local/anki-agent/self-review-report.schema.json",
+  "title": "Anki Factory Self Review Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id", "reviewed_at", "ok", "summary", "passes", "candidates"],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 3
+    },
+    "reviewed_at": {
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "auto_pass", "rewrite", "reject", "user_review"],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "auto_pass": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rewrite": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reject": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "user_review": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_note_type": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "passes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "purpose"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reviewedCandidate"
+      }
+    },
+    "source_files": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "reviewedCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "note_type_key",
+        "decision",
+        "overall_score",
+        "scores",
+        "signals",
+        "issues"
+      ],
+      "properties": {
+        "candidate_id": {
+          "type": "string"
+        },
+        "note_type_key": {
+          "type": "string"
+        },
+        "decision": {
+          "type": "string",
+          "enum": ["auto_pass", "rewrite", "reject", "user_review"]
+        },
+        "overall_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "scores": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "signals": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["boolean", "number", "string"]
+          }
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["severity", "code", "message"],
+            "properties": {
+              "severity": {
+                "type": "string",
+                "enum": ["error", "warning", "info"]
+              },
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "rewrite_focus": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "user_review_reason": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
