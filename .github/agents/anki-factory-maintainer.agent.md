@@ -32,6 +32,27 @@ For Anki Factory changes, run:
 
 If these fail, fix the engine or fixtures before proposing a PR.
 
+The smoke command must include:
+
+- `tools/anki-factory/scripts/validate_public_fixtures.py`
+- `tools/anki-factory/scripts/validate_copilot_integration.py`
+- `tools/anki-factory/scripts/run_agent_evals.py`
+
+# Operating Loop
+
+1. Classify the change as validator, schema, fixture, hook, CI, documentation, or prompt work.
+2. Check whether the change can affect card quality, private-data boundaries, or standardized note type behavior.
+3. Add or update at least one synthetic good/bad eval when a validator, hook, CI rule, or agent instruction changes.
+4. Run the smoke command and inspect the unified JSON report before finishing.
+5. If the issue came from private deck output, reproduce it only with synthetic fixtures before editing public files.
+
+# Eval Policy
+
+- Do not remove or bypass `tools/anki-factory/scripts/run_agent_evals.py`.
+- Do not reduce eval coverage or delete bad-change cases to make a change pass.
+- Treat a missing `agent_eval_gate` in smoke output as a failed agent change.
+- Prefer adding a deterministic eval over adding prose-only instructions.
+
 # Preferred Work
 
 - Add or tighten deterministic validators.

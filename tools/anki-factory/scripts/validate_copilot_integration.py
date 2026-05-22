@@ -11,6 +11,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SMOKE_COMMAND = ".github/skills/anki-factory-quality/scripts/run-smoke.sh"
 AGENT_EVAL_COMMAND = "tools/anki-factory/scripts/run_agent_evals.py"
+AGENT_EVAL_GATE = "agent_eval_gate"
 
 REQUIRED_FILES = [
     ".github/copilot-instructions.md",
@@ -108,6 +109,9 @@ def validate_agent_and_skill() -> None:
     require(agent_meta.get("name") == "anki-factory-maintainer", "Custom agent name drifted")
     require(agent_meta.get("description"), "Custom agent description is required")
     require(SMOKE_COMMAND in agent_text, "Custom agent must require the Anki Factory smoke command")
+    require(agent_text.count(AGENT_EVAL_COMMAND) >= 2, "Custom agent must require agent evals in validation and eval policy")
+    require(AGENT_EVAL_GATE in agent_text, "Custom agent must treat missing agent_eval_gate as a failure")
+    require("Do not remove or bypass" in agent_text, "Custom agent must forbid bypassing agent evals")
     require("private lecture" in agent_text.lower(), "Custom agent must state private data boundary")
     require("@표준화 Basic" in agent_text and "@표준화 Cloze" in agent_text, "Custom agent must preserve standardized note types")
 
@@ -116,6 +120,8 @@ def validate_agent_and_skill() -> None:
     require(skill_meta.get("name") == "anki-factory-quality", "Skill name drifted")
     require(skill_meta.get("description"), "Skill description is required")
     require(SMOKE_COMMAND in skill_text, "Skill must expose the smoke command")
+    require(AGENT_EVAL_COMMAND in skill_text, "Skill must expose the agent eval command")
+    require(AGENT_EVAL_GATE in skill_text, "Skill must describe agent_eval_gate output")
     require("Not allowed" in skill_text and "Private run outputs" in skill_text, "Skill must keep private data out of scope")
 
 
@@ -144,6 +150,7 @@ def validate_hook_and_ci() -> None:
 
     smoke_script = read(SMOKE_COMMAND)
     require(AGENT_EVAL_COMMAND in smoke_script, "Smoke command must run agent evals")
+    require(AGENT_EVAL_GATE in smoke_script, "Smoke command must emit agent_eval_gate")
 
 
 def validate_public_boundary_terms() -> None:

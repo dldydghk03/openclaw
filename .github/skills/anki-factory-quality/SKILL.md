@@ -49,6 +49,12 @@ Run the public smoke check:
 
 The command emits one JSON object with `fixture_gate`, `copilot_integration_gate`, and `agent_eval_gate` sections so CI, hooks, and agents can parse the same report.
 
+The `agent_eval_gate` comes from:
+
+```bash
+python3 tools/anki-factory/scripts/run_agent_evals.py
+```
+
 ## Review Checklist
 
 - Did the change add synthetic positive and negative coverage?
@@ -56,3 +62,5 @@ The command emits one JSON object with `fixture_gate`, `copilot_integration_gate
 - Does it preserve standardized note type contracts?
 - Does it fail closed when metadata leaks or jokbo explanations are weak?
 - Does documentation match the gate behavior?
+- Does the unified smoke report still include `agent_eval_gate`?
+- Did the change avoid weakening or deleting bad-change eval cases?

@@ -40,6 +40,52 @@ def read_json(path: Path) -> dict[str, Any]:
         return json.load(handle)
 
 
+def validate_manifest_coverage(manifest: dict[str, Any]) -> dict[str, Any]:
+    card_cases = manifest.get("card_quality_cases", [])
+    integration_cases = manifest.get("copilot_integration_cases", [])
+    all_cases = [*card_cases, *integration_cases]
+    requirements = manifest.get("coverage_requirements", {})
+    failures: list[str] = []
+
+    min_total = int(requirements.get("min_total_cases", 0))
+    min_card = int(requirements.get("min_card_quality_cases", 0))
+    min_integration = int(requirements.get("min_copilot_integration_cases", 0))
+    if len(all_cases) < min_total:
+        failures.append(f"case count below min_total_cases: {len(all_cases)} < {min_total}")
+    if len(card_cases) < min_card:
+        failures.append(f"card_quality_cases below minimum: {len(card_cases)} < {min_card}")
+    if len(integration_cases) < min_integration:
+        failures.append(f"copilot_integration_cases below minimum: {len(integration_cases)} < {min_integration}")
+
+    case_ids = [str(case.get("id")) for case in all_cases]
+    duplicate_ids = sorted({case_id for case_id in case_ids if case_ids.count(case_id) > 1})
+    if duplicate_ids:
+        failures.append(f"duplicate eval case ids: {duplicate_ids}")
+
+    missing_required = sorted(set(requirements.get("required_case_ids", [])) - set(case_ids))
+    if missing_required:
+        failures.append(f"missing required eval case ids: {missing_required}")
+
+    for case in all_cases:
+        if case.get("expect_ok") is False:
+            has_required_error = bool(case.get("required_error_codes"))
+            has_required_warning = bool(case.get("required_warning_codes"))
+            has_required_message = bool(case.get("required_message_fragments"))
+            if not (has_required_error or has_required_warning or has_required_message):
+                failures.append(f"bad-change eval lacks required assertions: {case.get('id')}")
+
+    return {
+        "passed": not failures,
+        "failures": failures,
+        "observed": {
+            "total_cases": len(all_cases),
+            "card_quality_cases": len(card_cases),
+            "copilot_integration_cases": len(integration_cases),
+            "required_case_ids": requirements.get("required_case_ids", []),
+        },
+    }
+
+
 def case_result(case: dict[str, Any], passed: bool, observed: dict[str, Any], failures: list[str]) -> dict[str, Any]:
     return {
         "id": case.get("id"),
@@ -163,6 +209,7 @@ def main() -> int:
     manifest = read_json(MANIFEST_PATH)
     contract = load_contract(CONTRACT_PATH)
     results: list[dict[str, Any]] = []
+    coverage = validate_manifest_coverage(manifest)
 
     for case in manifest.get("card_quality_cases", []):
         results.append(eval_card_quality_case(case, contract))
@@ -170,10 +217,13 @@ def main() -> int:
         results.append(eval_copilot_integration_case(case))
 
     failed = [result for result in results if not result["passed"]]
+    if not coverage["passed"]:
+        failed.append({"id": "manifest-coverage", "failures": coverage["failures"]})
     report = {
         "ok": not failed,
         "checked_at": now_iso(),
         "manifest_version": manifest.get("version"),
+        "coverage": coverage,
         "case_count": len(results),
         "failed_count": len(failed),
         "cases": results,

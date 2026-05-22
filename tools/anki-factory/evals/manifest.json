@@ -1,6 +1,22 @@
 {
   "version": "0.1.0",
   "purpose": "Public-safe eval set for distinguishing good and bad Anki Factory agent changes.",
+  "coverage_requirements": {
+    "min_total_cases": 9,
+    "min_card_quality_cases": 3,
+    "min_copilot_integration_cases": 6,
+    "required_case_ids": [
+      "good-natural-table-cloze",
+      "bad-metadata-and-awkward-tone",
+      "bad-non-standard-note-type",
+      "good-current-wiring",
+      "bad-skill-removes-smoke-command",
+      "bad-ci-drops-hook-path",
+      "bad-public-doc-private-path",
+      "bad-smoke-drops-agent-evals",
+      "bad-agent-drops-eval-policy"
+    ]
+  },
   "card_quality_cases": [
     {
       "id": "good-natural-table-cloze",
@@ -73,6 +89,36 @@
           "op": "append",
           "path": "docs/anki-factory/copilot-operation.md",
           "text_parts": ["\nDebug note: /", "Users", "/example/private-source.apkg\n"]
+        }
+      ]
+    },
+    {
+      "id": "bad-smoke-drops-agent-evals",
+      "description": "A smoke script edit that removes agent eval execution should fail.",
+      "expect_ok": false,
+      "required_message_fragments": ["Smoke command must run agent evals"],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/skills/anki-factory-quality/scripts/run-smoke.sh",
+          "old": "python3 tools/anki-factory/scripts/run_agent_evals.py >\"$agent_eval_report\"\n",
+          "new": ""
+        }
+      ]
+    },
+    {
+      "id": "bad-agent-drops-eval-policy",
+      "description": "A custom agent edit that stops requiring agent evals should fail.",
+      "expect_ok": false,
+      "required_message_fragments": [
+        "Custom agent must require agent evals in validation and eval policy"
+      ],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/agents/anki-factory-maintainer.agent.md",
+          "old": "tools/anki-factory/scripts/run_agent_evals.py",
+          "new": "optional local eval checks"
         }
       ]
     }
