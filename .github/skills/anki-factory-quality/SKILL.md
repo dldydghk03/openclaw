@@ -37,6 +37,7 @@ Not allowed:
 6. Basic card fronts should be compact titles.
 7. APKG workflows must preserve preview, approval, export, and read-back.
 8. Copilot instructions, agent, skill, hook, and CI must all delegate to the same smoke command.
+9. Agent evals must distinguish good changes from bad changes before a PR is considered ready.
 
 ## Commands
 
@@ -46,7 +47,7 @@ Run the public smoke check:
 .github/skills/anki-factory-quality/scripts/run-smoke.sh
 ```
 
-The command emits one JSON object with `fixture_gate` and `copilot_integration_gate` sections so CI, hooks, and agents can parse the same report.
+The command emits one JSON object with `fixture_gate`, `copilot_integration_gate`, and `agent_eval_gate` sections so CI, hooks, and agents can parse the same report.
 
 ## Review Checklist
 

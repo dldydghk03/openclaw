@@ -16,21 +16,25 @@ PY
 
 fixture_report="$(mktemp)"
 integration_report="$(mktemp)"
+agent_eval_report="$(mktemp)"
 python3 tools/anki-factory/scripts/validate_public_fixtures.py >"$fixture_report"
 python3 tools/anki-factory/scripts/validate_copilot_integration.py >"$integration_report"
-python3 - "$fixture_report" "$integration_report" <<'PY'
+python3 tools/anki-factory/scripts/run_agent_evals.py >"$agent_eval_report"
+python3 - "$fixture_report" "$integration_report" "$agent_eval_report" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 fixture_report = json.loads(Path(sys.argv[1]).read_text())
 integration_report = json.loads(Path(sys.argv[2]).read_text())
+agent_eval_report = json.loads(Path(sys.argv[3]).read_text())
 print(
     json.dumps(
         {
-            "ok": bool(fixture_report.get("ok") and integration_report.get("ok")),
+            "ok": bool(fixture_report.get("ok") and integration_report.get("ok") and agent_eval_report.get("ok")),
             "fixture_gate": fixture_report,
             "copilot_integration_gate": integration_report,
+            "agent_eval_gate": agent_eval_report,
         },
         ensure_ascii=False,
         indent=2,

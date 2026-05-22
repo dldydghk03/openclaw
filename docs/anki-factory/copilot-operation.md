@@ -55,6 +55,7 @@ Copilot instructions are useful but still advisory. Anki Factory therefore uses 
 - A Copilot skill gives the agent a repeatable smoke command and scope boundary.
 - CI and the `agentStop` hook run deterministic checks so metadata leaks, weak jokbo explanations, table formatting drift, and note-type drift are blocked even if a reviewer misses them.
 - `validate_copilot_integration.py` checks that the instruction files, custom agent, skill, hook, and CI all point at the same smoke command and preserve the same public/private boundary.
+- `run_agent_evals.py` adds synthetic good-change and bad-change scenarios so the agent is judged on whether it can preserve good edits and reject bad ones.
 
 ## PR Check Interpretation
 

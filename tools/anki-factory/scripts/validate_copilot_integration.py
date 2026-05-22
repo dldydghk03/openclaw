@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import json
 import re
+import argparse
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SMOKE_COMMAND = ".github/skills/anki-factory-quality/scripts/run-smoke.sh"
+AGENT_EVAL_COMMAND = "tools/anki-factory/scripts/run_agent_evals.py"
 
 REQUIRED_FILES = [
     ".github/copilot-instructions.md",
@@ -20,6 +22,9 @@ REQUIRED_FILES = [
     ".github/workflows/anki-factory-ci.yml",
     "docs/anki-factory/copilot-operation.md",
     "tools/anki-factory/scripts/validate_public_fixtures.py",
+    "tools/anki-factory/scripts/run_agent_evals.py",
+    "tools/anki-factory/evals/README.md",
+    "tools/anki-factory/evals/manifest.json",
 ]
 
 PRIVATE_BOUNDARY_PATHS = [
@@ -44,9 +49,13 @@ EXPECTED_PATH_GLOBS = [
 ]
 
 
+class ValidationError(AssertionError):
+    """Expected validation failure with a user-safe message."""
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
-        raise AssertionError(message)
+        raise ValidationError(message)
 
 
 def read(path: str) -> str:
@@ -131,7 +140,10 @@ def validate_hook_and_ci() -> None:
     require(SMOKE_COMMAND in workflow, "CI workflow must run the same smoke command")
     require("pull_request:" in workflow and "workflow_dispatch:" in workflow, "CI workflow must support PR and manual runs")
     for glob in EXPECTED_PATH_GLOBS:
-        require(glob in workflow, f"CI path filter must include {glob}")
+        require(workflow.count(glob) >= 2, f"CI path filter must include {glob} for pull_request and push")
+
+    smoke_script = read(SMOKE_COMMAND)
+    require(AGENT_EVAL_COMMAND in smoke_script, "Smoke command must run agent evals")
 
 
 def validate_public_boundary_terms() -> None:
@@ -147,11 +159,19 @@ def validate_public_boundary_terms() -> None:
         text = read(path)
         for marker in private_markers:
             if marker in text:
-                leaked.append(f"{path}: {marker}")
+                leaked.append(f"{path}: private-boundary-marker")
     require(not leaked, f"Public Copilot files contain private boundary leaks: {leaked}")
 
 
 def main() -> int:
+    global REPO_ROOT
+
+    parser = argparse.ArgumentParser(description="Validate Anki Factory Copilot integration wiring.")
+    parser.add_argument("--repo-root", default=str(REPO_ROOT), help="Repository root to validate.")
+    args = parser.parse_args()
+
+    REPO_ROOT = Path(args.repo_root).resolve()
+
     checks = [
         validate_required_files,
         validate_instruction_scope,
@@ -159,9 +179,25 @@ def main() -> int:
         validate_hook_and_ci,
         validate_public_boundary_terms,
     ]
+    completed: list[str] = []
     for check in checks:
-        check()
-    print(json.dumps({"ok": True, "checks": [check.__name__ for check in checks]}, indent=2))
+        try:
+            check()
+        except ValidationError as exc:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "failed_check": check.__name__,
+                        "completed_checks": completed,
+                        "error": str(exc),
+                    },
+                    indent=2,
+                )
+            )
+            return 1
+        completed.append(check.__name__)
+    print(json.dumps({"ok": True, "checks": completed}, indent=2))
     return 0
 
 

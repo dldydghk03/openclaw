@@ -1,0 +1,80 @@
+{
+  "version": "0.1.0",
+  "purpose": "Public-safe eval set for distinguishing good and bad Anki Factory agent changes.",
+  "card_quality_cases": [
+    {
+      "id": "good-natural-table-cloze",
+      "description": "A useful synthetic table cloze with standardized fields and natural tutor tone should pass without warnings.",
+      "fixture": "fixtures/good-natural-table-cloze.card-candidates.json",
+      "expect_ok": true,
+      "expect_no_warnings": true,
+      "required_error_codes": [],
+      "required_warning_codes": []
+    },
+    {
+      "id": "bad-metadata-and-awkward-tone",
+      "description": "Learner-visible metadata plus awkward AI phrasing should be caught.",
+      "fixture": "fixtures/bad-metadata-and-awkward-tone.card-candidates.json",
+      "expect_ok": false,
+      "required_error_codes": ["metadata_leaked_to_card_field"],
+      "required_warning_codes": ["ai_smell_pattern"]
+    },
+    {
+      "id": "bad-non-standard-note-type",
+      "description": "A change that introduces a non-standard note type should fail.",
+      "fixture": "fixtures/bad-non-standard-note-type.card-candidates.json",
+      "expect_ok": false,
+      "required_error_codes": ["unknown_note_type_key"],
+      "required_warning_codes": []
+    }
+  ],
+  "copilot_integration_cases": [
+    {
+      "id": "good-current-wiring",
+      "description": "The current public-safe Copilot wiring should pass integration validation.",
+      "expect_ok": true,
+      "mutations": []
+    },
+    {
+      "id": "bad-skill-removes-smoke-command",
+      "description": "A skill edit that stops exposing the shared smoke command should fail.",
+      "expect_ok": false,
+      "required_message_fragments": ["Skill must expose the smoke command"],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/skills/anki-factory-quality/SKILL.md",
+          "old": ".github/skills/anki-factory-quality/scripts/run-smoke.sh",
+          "new": "python3 tools/anki-factory/scripts/validate_public_fixtures.py"
+        }
+      ]
+    },
+    {
+      "id": "bad-ci-drops-hook-path",
+      "description": "A workflow edit that no longer watches hook scripts should fail.",
+      "expect_ok": false,
+      "required_message_fragments": ["CI path filter must include .github/hooks/anki-factory-*.sh"],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/workflows/anki-factory-ci.yml",
+          "old": "      - \".github/hooks/anki-factory-*.sh\"\n",
+          "new": ""
+        }
+      ]
+    },
+    {
+      "id": "bad-public-doc-private-path",
+      "description": "A public Copilot-facing doc that leaks a local path should fail.",
+      "expect_ok": false,
+      "required_message_fragments": ["Public Copilot files contain private boundary leaks"],
+      "mutations": [
+        {
+          "op": "append",
+          "path": "docs/anki-factory/copilot-operation.md",
+          "text_parts": ["\nDebug note: /", "Users", "/example/private-source.apkg\n"]
+        }
+      ]
+    }
+  ]
+}
