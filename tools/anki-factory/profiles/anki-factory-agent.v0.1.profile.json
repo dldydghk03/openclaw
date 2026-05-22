@@ -1,0 +1,51 @@
+{
+  "profile_id": "anki-factory-agent-v0.1",
+  "version": "0.1.0",
+  "status": "public_runtime_preview",
+  "purpose": "Maintain a public-safe Anki Factory agent runtime for standardized medical deck generation.",
+  "runtime_boundary": {
+    "allowed_in_repo": [
+      "schemas",
+      "synthetic fixtures",
+      "quality gates",
+      "public workflow docs",
+      "runtime wrappers that operate on explicit local inputs"
+    ],
+    "blocked_in_repo": [
+      "private lecture notes",
+      "real recovered exam text",
+      "Drive exports",
+      "generated APKG files",
+      "local output run folders"
+    ]
+  },
+  "roles": [
+    {
+      "role_id": "source_intake_agent",
+      "output": "source-bundle.json",
+      "rule": "Record explicit files and missing inputs before card writing."
+    },
+    {
+      "role_id": "deck_architect_agent",
+      "output": "deck-plan.preview.md",
+      "rule": "Set card budget, subdecks, and source coverage without drafting cards."
+    },
+    {
+      "role_id": "quality_judge_agent",
+      "output": "quality-report.json",
+      "rule": "Reject field drift, metadata leaks, weak jokbo explanation, and AI-smell phrasing."
+    },
+    {
+      "role_id": "human_review_agent",
+      "output": "human-review-pack",
+      "rule": "Prepare review queue before approval or export."
+    }
+  ],
+  "command": "python3 tools/anki-factory/scripts/run_anki_factory.py",
+  "hard_gates": [
+    "source intake before deck planning",
+    "quality gate before human review",
+    "approval and read-back before APKG export",
+    "no external write in public runtime smoke"
+  ]
+}

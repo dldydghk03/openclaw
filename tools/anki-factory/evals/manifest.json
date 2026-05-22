@@ -2,10 +2,10 @@
   "version": "0.1.0",
   "purpose": "Public-safe eval set for distinguishing good and bad Anki Factory agent changes.",
   "coverage_requirements": {
-    "min_total_cases": 19,
+    "min_total_cases": 20,
     "min_card_quality_cases": 3,
     "min_phrasing_regression_cases": 5,
-    "min_copilot_integration_cases": 11,
+    "min_copilot_integration_cases": 12,
     "required_case_ids": [
       "good-natural-table-cloze",
       "bad-metadata-and-awkward-tone",
@@ -20,6 +20,7 @@
       "bad-ci-drops-hook-path",
       "bad-public-doc-private-path",
       "bad-smoke-drops-agent-evals",
+      "bad-smoke-drops-runtime-wrapper",
       "bad-agent-drops-eval-policy",
       "bad-instruction-over-budget",
       "bad-instruction-marker-removed",
@@ -160,6 +161,20 @@
           "path": ".github/skills/anki-factory-quality/scripts/run-smoke.sh",
           "old": "python3 tools/anki-factory/scripts/run_agent_evals.py >\"$agent_eval_report\"\n",
           "new": ""
+        }
+      ]
+    },
+    {
+      "id": "bad-smoke-drops-runtime-wrapper",
+      "description": "A smoke script edit that stops running the one-command runtime wrapper should fail.",
+      "expect_ok": false,
+      "required_message_fragments": ["Smoke command must run the one-command runtime wrapper"],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/skills/anki-factory-quality/scripts/run-smoke.sh",
+          "old": "python3 tools/anki-factory/scripts/run_anki_factory.py",
+          "new": "python3 tools/anki-factory/scripts/validate_public_fixtures.py"
         }
       ]
     },

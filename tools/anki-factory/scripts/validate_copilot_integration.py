@@ -12,6 +12,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 SMOKE_COMMAND = ".github/skills/anki-factory-quality/scripts/run-smoke.sh"
 AGENT_EVAL_COMMAND = "tools/anki-factory/scripts/run_agent_evals.py"
 AGENT_EVAL_GATE = "agent_eval_gate"
+RUNTIME_COMMAND = "tools/anki-factory/scripts/run_anki_factory.py"
+RUNTIME_GATE = "runtime_smoke"
 INSTRUCTION_BUDGET_CHARS = 4000
 CORE_RULE_WINDOW_CHARS = 3500
 
@@ -36,6 +38,13 @@ REQUIRED_FILES = [
     "tools/anki-factory/scripts/validate_public_fixtures.py",
     "tools/anki-factory/scripts/run_agent_evals.py",
     "tools/anki-factory/scripts/build_quality_dashboard.py",
+    "tools/anki-factory/scripts/source_intake.py",
+    "tools/anki-factory/scripts/build_deck_plan.py",
+    "tools/anki-factory/scripts/human_review_pack.py",
+    RUNTIME_COMMAND,
+    "tools/anki-factory/profiles/anki-factory-agent.v0.1.profile.json",
+    "tools/anki-factory/workflows/anki-factory-agent.v0.1.state-machine.json",
+    "tools/anki-factory/workflows/anki-factory-agent.v0.1.workflow.md",
     "tools/anki-factory/evals/README.md",
     "tools/anki-factory/evals/manifest.json",
 ]
@@ -86,6 +95,7 @@ INSTRUCTION_BUDGET_FILES = {
         "Data Boundary",
         "Required Validation",
         AGENT_EVAL_COMMAND,
+        RUNTIME_COMMAND,
         "Eval Policy",
         "Do not remove or bypass",
     ],
@@ -94,6 +104,7 @@ INSTRUCTION_BUDGET_FILES = {
         "Quality Rules",
         AGENT_EVAL_COMMAND,
         AGENT_EVAL_GATE,
+        RUNTIME_GATE,
     ],
 }
 
@@ -174,7 +185,9 @@ def validate_agent_and_skill() -> None:
     require(agent_meta.get("description"), "Custom agent description is required")
     require(SMOKE_COMMAND in agent_text, "Custom agent must require the Anki Factory smoke command")
     require(agent_text.count(AGENT_EVAL_COMMAND) >= 2, "Custom agent must require agent evals in validation and eval policy")
+    require(RUNTIME_COMMAND in agent_text, "Custom agent must mention the one-command runtime wrapper")
     require(AGENT_EVAL_GATE in agent_text, "Custom agent must treat missing agent_eval_gate as a failure")
+    require(RUNTIME_GATE in agent_text, "Custom agent must treat missing runtime_smoke as a failure")
     require("Do not remove or bypass" in agent_text, "Custom agent must forbid bypassing agent evals")
     require("private lecture" in agent_text.lower(), "Custom agent must state private data boundary")
     require("@표준화 Basic" in agent_text and "@표준화 Cloze" in agent_text, "Custom agent must preserve standardized note types")
@@ -186,6 +199,8 @@ def validate_agent_and_skill() -> None:
     require(SMOKE_COMMAND in skill_text, "Skill must expose the smoke command")
     require(AGENT_EVAL_COMMAND in skill_text, "Skill must expose the agent eval command")
     require(AGENT_EVAL_GATE in skill_text, "Skill must describe agent_eval_gate output")
+    require(RUNTIME_COMMAND in skill_text, "Skill must expose the runtime wrapper command")
+    require(RUNTIME_GATE in skill_text, "Skill must describe runtime_smoke output")
     require("Not allowed" in skill_text and "Private run outputs" in skill_text, "Skill must keep private data out of scope")
 
 
@@ -228,6 +243,8 @@ def validate_hook_and_ci() -> None:
     smoke_script = read(SMOKE_COMMAND)
     require(AGENT_EVAL_COMMAND in smoke_script, "Smoke command must run agent evals")
     require(AGENT_EVAL_GATE in smoke_script, "Smoke command must emit agent_eval_gate")
+    require(RUNTIME_COMMAND in smoke_script, "Smoke command must run the one-command runtime wrapper")
+    require(RUNTIME_GATE in smoke_script, "Smoke command must emit runtime_smoke")
 
 
 def validate_issue_templates_and_pr_checklist() -> None:

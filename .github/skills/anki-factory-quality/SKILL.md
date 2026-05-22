@@ -55,6 +55,11 @@ Run the public smoke check:
 ```
 
 The command emits one JSON object with `fixture_gate`, `copilot_integration_gate`, and `agent_eval_gate` sections so CI, hooks, and agents can parse the same report.
+It also emits `runtime_smoke` from the one-command preview wrapper:
+
+```bash
+python3 tools/anki-factory/scripts/run_anki_factory.py
+```
 
 The `agent_eval_gate` comes from:
 
@@ -70,6 +75,7 @@ python3 tools/anki-factory/scripts/run_agent_evals.py
 - Does it fail closed when metadata leaks or jokbo explanations are weak?
 - Does documentation match the gate behavior?
 - Does the unified smoke report still include `agent_eval_gate`?
+- Does the unified smoke report still include `runtime_smoke`?
 - Did the change avoid weakening or deleting bad-change eval cases?
 - Did the change keep user-specific phrasing regressions covered?
 - Did the change keep core Copilot instructions within the budget guard?

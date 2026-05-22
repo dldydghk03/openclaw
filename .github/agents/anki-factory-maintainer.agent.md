@@ -37,6 +37,7 @@ The smoke command must include:
 - `tools/anki-factory/scripts/validate_public_fixtures.py`
 - `tools/anki-factory/scripts/validate_copilot_integration.py`
 - `tools/anki-factory/scripts/run_agent_evals.py`
+- `tools/anki-factory/scripts/run_anki_factory.py`
 
 # Operating Loop
 
@@ -52,6 +53,7 @@ The smoke command must include:
 - Do not remove or bypass `tools/anki-factory/scripts/run_agent_evals.py`.
 - Do not reduce eval coverage or delete bad-change cases to make a change pass.
 - Treat a missing `agent_eval_gate` in smoke output as a failed agent change.
+- Treat a missing `runtime_smoke` in smoke output as a failed agent runtime change.
 - Prefer adding a deterministic eval over adding prose-only instructions.
 - Preserve phrasing-regression evals for the user's disliked AI-style expressions.
 
