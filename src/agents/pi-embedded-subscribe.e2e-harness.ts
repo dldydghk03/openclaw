@@ -1,4 +1,4 @@
-import type { AssistantMessage } from "@mariozechner/pi-ai";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { expect } from "vitest";
 import { subscribeEmbeddedPiSession } from "./pi-embedded-subscribe.js";
 
@@ -13,6 +13,7 @@ export const THINKING_TAG_CASES = [
   { tag: "thinking", open: "<thinking>", close: "</thinking>" },
   { tag: "thought", open: "<thought>", close: "</thought>" },
   { tag: "antthinking", open: "<antthinking>", close: "</antthinking>" },
+  { tag: "antml:thinking", open: "<antml:thinking>", close: "</antml:thinking>" },
 ] as const;
 
 export function createStubSessionHarness(): {
@@ -180,6 +181,16 @@ export function emitAssistantLifecycleErrorAndEnd(params: {
   } as AssistantMessage;
   params.emit({ type: "message_update", message: assistantMessage });
   params.emit({ type: "agent_end" });
+}
+
+export function createReasoningFinalAnswerMessage(): AssistantMessage {
+  return {
+    role: "assistant",
+    content: [
+      { type: "thinking", thinking: "Because it helps" },
+      { type: "text", text: "Final answer" },
+    ],
+  } as AssistantMessage;
 }
 
 type LifecycleErrorAgentEvent = {

@@ -1,12 +1,10 @@
 ---
-summary: "Camera capture (iOS node + macOS app) for agent use: photos (jpg) and short video clips (mp4)"
+summary: "Camera capture (iOS/Android nodes + macOS app) for agent use: photos (jpg) and short video clips (mp4)"
 read_when:
-  - Adding or modifying camera capture on iOS nodes or macOS
+  - Adding or modifying camera capture on iOS/Android nodes or macOS
   - Extending agent-accessible MEDIA temp-file workflows
-title: "Camera Capture"
+title: "Camera capture"
 ---
-
-# Camera capture (agent)
 
 OpenClaw supports **camera capture** for agent workflows:
 
@@ -118,7 +116,7 @@ The macOS companion app exposes a checkbox:
 
 - **Settings → General → Allow Camera** (`openclaw.cameraEnabled`)
   - Default: **off**
-  - When off: camera requests return “Camera disabled by user”.
+  - When off: camera requests return "Camera disabled by user".
 
 ### CLI helper (node invoke)
 
@@ -160,3 +158,9 @@ openclaw nodes screen record --node <id> --duration 10s --fps 15   # prints MEDI
 Notes:
 
 - Requires macOS **Screen Recording** permission (TCC).
+
+## Related
+
+- [Image and media support](/nodes/images)
+- [Media understanding](/nodes/media-understanding)
+- [Location command](/nodes/location-command)

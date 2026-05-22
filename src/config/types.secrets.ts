@@ -1,4 +1,6 @@
-export type SecretRefSource = "env" | "file" | "exec";
+import { isRecord } from "../utils.js";
+
+export type SecretRefSource = "env" | "file" | "exec"; // pragma: allowlist secret
 
 /**
  * Stable identifier for a secret in a configured source.
@@ -14,11 +16,25 @@ export type SecretRef = {
 };
 
 export type SecretInput = string | SecretRef;
-export const DEFAULT_SECRET_PROVIDER_ALIAS = "default";
+export const DEFAULT_SECRET_PROVIDER_ALIAS = "default"; // pragma: allowlist secret
+export const ENV_SECRET_REF_ID_RE = /^[A-Z][A-Z0-9_]{0,127}$/;
+export const LEGACY_SECRETREF_ENV_MARKER_PREFIX = "secretref-env:"; // pragma: allowlist secret
+export const LEGACY_DOUBLE_UNDERSCORE_ENV_MARKER_PREFIX = "__env__:"; // pragma: allowlist secret
 const ENV_SECRET_TEMPLATE_RE = /^\$\{([A-Z][A-Z0-9_]{0,127})\}$/;
+const ENV_SECRET_SHORTHAND_RE = /^\$([A-Z][A-Z0-9_]{0,127})$/;
+export type SecretInputStringResolutionMode = "strict" | "inspect";
+export type SecretInputStringResolution =
+  | { status: "available"; value: string; ref: null }
+  | { status: "configured_unavailable"; value: undefined; ref: SecretRef }
+  | { status: "missing"; value: undefined; ref: null };
+type SecretDefaults = {
+  env?: string;
+  file?: string;
+  exec?: string;
+};
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+export function isValidEnvSecretRefId(value: string): boolean {
+  return ENV_SECRET_REF_ID_RE.test(value);
 }
 
 export function isSecretRef(value: unknown): value is SecretRef {
@@ -58,7 +74,8 @@ export function parseEnvTemplateSecretRef(
   if (typeof value !== "string") {
     return null;
   }
-  const match = ENV_SECRET_TEMPLATE_RE.exec(value.trim());
+  const trimmed = value.trim();
+  const match = ENV_SECRET_TEMPLATE_RE.exec(trimmed) ?? ENV_SECRET_SHORTHAND_RE.exec(trimmed);
   if (!match) {
     return null;
   }
@@ -69,16 +86,40 @@ export function parseEnvTemplateSecretRef(
   };
 }
 
-export function coerceSecretRef(
+export function parseLegacySecretRefEnvMarker(
   value: unknown,
-  defaults?: {
-    env?: string;
-    file?: string;
-    exec?: string;
-  },
+  provider = DEFAULT_SECRET_PROVIDER_ALIAS,
 ): SecretRef | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  const prefix = trimmed.startsWith(LEGACY_SECRETREF_ENV_MARKER_PREFIX)
+    ? LEGACY_SECRETREF_ENV_MARKER_PREFIX
+    : trimmed.startsWith(LEGACY_DOUBLE_UNDERSCORE_ENV_MARKER_PREFIX)
+      ? LEGACY_DOUBLE_UNDERSCORE_ENV_MARKER_PREFIX
+      : undefined;
+  if (!prefix) {
+    return null;
+  }
+  const id = trimmed.slice(prefix.length);
+  if (!ENV_SECRET_REF_ID_RE.test(id)) {
+    return null;
+  }
+  return {
+    source: "env",
+    provider: provider.trim() || DEFAULT_SECRET_PROVIDER_ALIAS,
+    id,
+  };
+}
+
+export function coerceSecretRef(value: unknown, defaults?: SecretDefaults): SecretRef | null {
   if (isSecretRef(value)) {
     return value;
+  }
+  const legacyEnvMarker = parseLegacySecretRefEnvMarker(value, defaults?.env);
+  if (legacyEnvMarker) {
+    return legacyEnvMarker;
   }
   if (isLegacySecretRefWithoutProvider(value)) {
     const provider =
@@ -100,13 +141,126 @@ export function coerceSecretRef(
   return null;
 }
 
+export function hasConfiguredSecretInput(value: unknown, defaults?: SecretDefaults): boolean {
+  if (normalizeSecretInputString(value)) {
+    return true;
+  }
+  return coerceSecretRef(value, defaults) !== null;
+}
+
+export function normalizeSecretInputString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function formatSecretRefLabel(ref: SecretRef): string {
+  return `${ref.source}:${ref.provider}:${ref.id}`;
+}
+
+function createUnresolvedSecretInputError(params: { path: string; ref: SecretRef }): Error {
+  return new Error(
+    `${params.path}: unresolved SecretRef "${formatSecretRefLabel(params.ref)}". Resolve this command against an active gateway runtime snapshot before reading it.`,
+  );
+}
+
+export function assertSecretInputResolved(params: {
+  value: unknown;
+  refValue?: unknown;
+  defaults?: SecretDefaults;
+  path: string;
+}): void {
+  const { ref } = resolveSecretInputRef({
+    value: params.value,
+    refValue: params.refValue,
+    defaults: params.defaults,
+  });
+  if (!ref) {
+    return;
+  }
+  throw createUnresolvedSecretInputError({ path: params.path, ref });
+}
+
+export function resolveSecretInputString(params: {
+  value: unknown;
+  refValue?: unknown;
+  defaults?: SecretDefaults;
+  path: string;
+  mode?: SecretInputStringResolutionMode;
+}): SecretInputStringResolution {
+  const normalized = normalizeSecretInputString(params.value);
+  if (normalized) {
+    return {
+      status: "available",
+      value: normalized,
+      ref: null,
+    };
+  }
+  const { ref } = resolveSecretInputRef({
+    value: params.value,
+    refValue: params.refValue,
+    defaults: params.defaults,
+  });
+  if (!ref) {
+    return {
+      status: "missing",
+      value: undefined,
+      ref: null,
+    };
+  }
+  if ((params.mode ?? "strict") === "strict") {
+    throw createUnresolvedSecretInputError({ path: params.path, ref });
+  }
+  return {
+    status: "configured_unavailable",
+    value: undefined,
+    ref,
+  };
+}
+
+export function normalizeResolvedSecretInputString(params: {
+  value: unknown;
+  refValue?: unknown;
+  defaults?: SecretDefaults;
+  path: string;
+}): string | undefined {
+  const resolved = resolveSecretInputString({
+    ...params,
+    mode: "strict",
+  });
+  if (resolved.status === "available") {
+    return resolved.value;
+  }
+  return undefined;
+}
+
+export function resolveSecretInputRef(params: {
+  value: unknown;
+  refValue?: unknown;
+  defaults?: SecretDefaults;
+}): {
+  explicitRef: SecretRef | null;
+  inlineRef: SecretRef | null;
+  ref: SecretRef | null;
+} {
+  const explicitRef = coerceSecretRef(params.refValue, params.defaults);
+  const inlineRef = explicitRef ? null : coerceSecretRef(params.value, params.defaults);
+  return {
+    explicitRef,
+    inlineRef,
+    ref: explicitRef ?? inlineRef,
+  };
+}
+
 export type EnvSecretProviderConfig = {
   source: "env";
   /** Optional env var allowlist (exact names). */
   allowlist?: string[];
 };
 
-export type FileSecretProviderMode = "singleValue" | "json";
+export type FileSecretProviderMode = "singleValue" | "json"; // pragma: allowlist secret
 
 export type FileSecretProviderConfig = {
   source: "file";
@@ -114,6 +268,7 @@ export type FileSecretProviderConfig = {
   mode?: FileSecretProviderMode;
   timeoutMs?: number;
   maxBytes?: number;
+  allowInsecurePath?: boolean;
 };
 
 export type ExecSecretProviderConfig = {

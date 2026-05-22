@@ -1,9 +1,32 @@
 #!/usr/bin/env bun
+import { execFile } from "node:child_process";
 // Manual ACP thread smoke for plain-language routing.
 // Keep this script available for regression/debug validation. Do not delete.
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
+import { formatErrorMessage } from "../../src/infra/errors.ts";
+import {
+  maskIdentifier,
+  parseStrictIntegerOption,
+  previewForDevToolLog,
+  redactForDevToolLog,
+  redactHomePath,
+} from "../lib/dev-tooling-safety.ts";
+
+function writeStdoutLine(message: string): void {
+  process.stdout.write(`${message}\n`);
+}
+
+function writeStdoutJson(value: unknown): void {
+  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function writeStderrLine(message: string): void {
+  process.stderr.write(`${message}\n`);
+}
 
 type ThreadBindingRecord = {
   accountId?: string;
@@ -38,7 +61,9 @@ type DiscordUser = {
   bot?: boolean;
 };
 
-type DriverMode = "token" | "webhook";
+const execFileAsync = promisify(execFile);
+
+type DriverMode = "token" | "webhook" | "openclaw";
 
 type Args = {
   channelId: string;
@@ -53,6 +78,7 @@ type Args = {
   mentionUserId?: string;
   instruction?: string;
   threadBindingsPath: string;
+  openclawBin: string;
   json: boolean;
 };
 
@@ -107,20 +133,20 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function parseNumber(value: string | undefined, fallback: number): number {
-  if (!value) {
-    return fallback;
-  }
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+function parseNumber(value: string | undefined, fallback: number, label: string): number {
+  return parseStrictIntegerOption({ fallback, label, min: 1, raw: value });
 }
 
 function resolveStateDir(): string {
-  const override = process.env.OPENCLAW_STATE_DIR?.trim() || process.env.CLAWDBOT_STATE_DIR?.trim();
+  const override = process.env.OPENCLAW_STATE_DIR?.trim();
   if (override) {
-    return override.startsWith("~")
-      ? path.resolve(process.env.HOME || "", override.slice(1))
-      : path.resolve(override);
+    if (override === "~") {
+      return path.resolve(process.env.HOME || "");
+    }
+    if (override.startsWith("~/")) {
+      return path.resolve(process.env.HOME || "", override.slice(2));
+    }
+    return path.resolve(override);
   }
   const home = process.env.OPENCLAW_HOME?.trim() || process.env.HOME || "";
   return path.join(home, ".openclaw");
@@ -143,16 +169,37 @@ function hasFlag(flag: string): boolean {
   return process.argv.slice(2).includes(flag);
 }
 
+function parseDriverMode(raw: string): DriverMode {
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "token" || normalized === "webhook" || normalized === "openclaw") {
+    return normalized;
+  }
+  throw new Error(
+    `Invalid --driver value ${JSON.stringify(raw)}; expected token, webhook, or openclaw.`,
+  );
+}
+
+function redactDiscordApiPath(apiPath: string): string {
+  return apiPath.replace(
+    /(\/webhooks\/[^/?#]+\/)([^/?#]+)/gu,
+    (_match, prefix: string, token: string) => `${prefix}${maskIdentifier(token)}`,
+  );
+}
+
+function safeErrorMessage(error: unknown): string {
+  return redactForDevToolLog(formatErrorMessage(error));
+}
+
 function usage(): string {
   return (
     "Usage: bun scripts/dev/discord-acp-plain-language-smoke.ts " +
-    "--channel <discord-channel-id> [--token <driver-token> | --driver webhook --bot-token <bot-token>] [options]\n\n" +
+    "--channel <discord-channel-id> [--token <driver-token> | --driver webhook --bot-token <bot-token> | --driver openclaw] [options]\n\n" +
     "Manual live smoke only (not CI). Sends a plain-language instruction in Discord and verifies:\n" +
     "1) OpenClaw spawned an ACP thread binding\n" +
     "2) agent replied in that bound thread with the expected ACK token\n\n" +
     "Options:\n" +
     "  --channel <id>               Parent Discord channel id (required)\n" +
-    "  --driver <token|webhook>     Driver transport mode (default: token)\n" +
+    "  --driver <token|webhook|openclaw> Driver transport mode (default: token)\n" +
     "  --token <token>              Driver Discord token (required for driver=token)\n" +
     "  --token-prefix <prefix>      Auth prefix for --token (default: Bot)\n" +
     "  --bot-token <token>          Bot token for webhook driver mode\n" +
@@ -163,6 +210,7 @@ function usage(): string {
     "  --timeout-ms <n>             Total timeout in ms (default: 240000)\n" +
     "  --poll-ms <n>                Poll interval in ms (default: 1500)\n" +
     "  --thread-bindings-path <p>   Override thread-bindings json path\n" +
+    "  --openclaw-bin <path>        OpenClaw CLI binary for driver=openclaw (default: openclaw)\n" +
     "  --json                       Emit JSON output\n" +
     "\n" +
     "Environment fallbacks:\n" +
@@ -176,73 +224,51 @@ function usage(): string {
     "  OPENCLAW_DISCORD_SMOKE_MENTION_USER_ID\n" +
     "  OPENCLAW_DISCORD_SMOKE_TIMEOUT_MS\n" +
     "  OPENCLAW_DISCORD_SMOKE_POLL_MS\n" +
-    "  OPENCLAW_DISCORD_SMOKE_THREAD_BINDINGS_PATH"
+    "  OPENCLAW_DISCORD_SMOKE_THREAD_BINDINGS_PATH\n" +
+    "  OPENCLAW_DISCORD_SMOKE_OPENCLAW_BIN"
   );
 }
 
 function parseArgs(): Args {
-  const channelId =
-    resolveArg("--channel") ||
-    process.env.OPENCLAW_DISCORD_SMOKE_CHANNEL_ID ||
-    process.env.CLAWDBOT_DISCORD_SMOKE_CHANNEL_ID ||
-    "";
+  const channelId = resolveArg("--channel") || process.env.OPENCLAW_DISCORD_SMOKE_CHANNEL_ID || "";
   const driverModeRaw =
-    resolveArg("--driver") ||
-    process.env.OPENCLAW_DISCORD_SMOKE_DRIVER ||
-    process.env.CLAWDBOT_DISCORD_SMOKE_DRIVER ||
-    "token";
-  const normalizedDriverMode = driverModeRaw.trim().toLowerCase();
-  const driverMode: DriverMode =
-    normalizedDriverMode === "webhook"
-      ? "webhook"
-      : normalizedDriverMode === "token"
-        ? "token"
-        : "token";
+    resolveArg("--driver") || process.env.OPENCLAW_DISCORD_SMOKE_DRIVER || "token";
+  const driverMode = parseDriverMode(driverModeRaw);
   const driverToken =
-    resolveArg("--token") ||
-    process.env.OPENCLAW_DISCORD_SMOKE_DRIVER_TOKEN ||
-    process.env.CLAWDBOT_DISCORD_SMOKE_DRIVER_TOKEN ||
-    "";
+    resolveArg("--token") || process.env.OPENCLAW_DISCORD_SMOKE_DRIVER_TOKEN || "";
   const driverTokenPrefix =
     resolveArg("--token-prefix") || process.env.OPENCLAW_DISCORD_SMOKE_DRIVER_TOKEN_PREFIX || "Bot";
   const botToken =
     resolveArg("--bot-token") ||
     process.env.OPENCLAW_DISCORD_SMOKE_BOT_TOKEN ||
-    process.env.CLAWDBOT_DISCORD_SMOKE_BOT_TOKEN ||
     process.env.DISCORD_BOT_TOKEN ||
     "";
   const botTokenPrefix =
     resolveArg("--bot-token-prefix") ||
     process.env.OPENCLAW_DISCORD_SMOKE_BOT_TOKEN_PREFIX ||
     "Bot";
-  const targetAgent =
-    resolveArg("--agent") ||
-    process.env.OPENCLAW_DISCORD_SMOKE_AGENT ||
-    process.env.CLAWDBOT_DISCORD_SMOKE_AGENT ||
-    "codex";
+  const targetAgent = resolveArg("--agent") || process.env.OPENCLAW_DISCORD_SMOKE_AGENT || "codex";
   const mentionUserId =
-    resolveArg("--mention") ||
-    process.env.OPENCLAW_DISCORD_SMOKE_MENTION_USER_ID ||
-    process.env.CLAWDBOT_DISCORD_SMOKE_MENTION_USER_ID ||
-    undefined;
+    resolveArg("--mention") || process.env.OPENCLAW_DISCORD_SMOKE_MENTION_USER_ID || undefined;
   const instruction =
-    resolveArg("--instruction") ||
-    process.env.OPENCLAW_DISCORD_SMOKE_INSTRUCTION ||
-    process.env.CLAWDBOT_DISCORD_SMOKE_INSTRUCTION ||
-    undefined;
+    resolveArg("--instruction") || process.env.OPENCLAW_DISCORD_SMOKE_INSTRUCTION || undefined;
   const timeoutMs = parseNumber(
     resolveArg("--timeout-ms") || process.env.OPENCLAW_DISCORD_SMOKE_TIMEOUT_MS,
     240_000,
+    "--timeout-ms",
   );
   const pollMs = parseNumber(
     resolveArg("--poll-ms") || process.env.OPENCLAW_DISCORD_SMOKE_POLL_MS,
     1_500,
+    "--poll-ms",
   );
   const defaultBindingsPath = path.join(resolveStateDir(), "discord", "thread-bindings.json");
   const threadBindingsPath =
     resolveArg("--thread-bindings-path") ||
     process.env.OPENCLAW_DISCORD_SMOKE_THREAD_BINDINGS_PATH ||
     defaultBindingsPath;
+  const openclawBin =
+    resolveArg("--openclaw-bin") || process.env.OPENCLAW_DISCORD_SMOKE_OPENCLAW_BIN || "openclaw";
   const json = hasFlag("--json");
 
   if (!channelId) {
@@ -268,8 +294,47 @@ function parseArgs(): Args {
     mentionUserId,
     instruction,
     threadBindingsPath,
+    openclawBin,
     json,
   };
+}
+
+async function openclawCliJson<T>(params: { openclawBin: string; args: string[] }): Promise<T> {
+  const result = await execFileAsync(params.openclawBin, params.args, {
+    maxBuffer: 8 * 1024 * 1024,
+    env: process.env,
+  });
+  const stdout = (result.stdout || "").trim();
+  if (!stdout) {
+    throw new Error(`openclaw ${params.args.join(" ")} returned empty stdout`);
+  }
+  return JSON.parse(stdout) as T;
+}
+
+async function readMessagesWithOpenclaw(params: {
+  openclawBin: string;
+  target: string;
+  limit: number;
+}): Promise<DiscordMessage[]> {
+  const response = await openclawCliJson<{
+    payload?: {
+      messages?: DiscordMessage[];
+    };
+  }>({
+    openclawBin: params.openclawBin,
+    args: [
+      "message",
+      "read",
+      "--channel",
+      "discord",
+      "--target",
+      params.target,
+      "--limit",
+      String(params.limit),
+      "--json",
+    ],
+  });
+  return Array.isArray(response.payload?.messages) ? response.payload.messages : [];
 }
 
 function resolveAuthorizationHeader(params: { token: string; tokenPrefix: string }): string {
@@ -290,39 +355,17 @@ async function discordApi<T>(params: {
   body?: unknown;
   retries?: number;
 }): Promise<T> {
-  const retries = params.retries ?? 6;
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
-    const response = await fetch(`${DISCORD_API_BASE}${params.path}`, {
-      method: params.method,
-      headers: {
-        Authorization: params.authHeader,
-        "Content-Type": "application/json",
-      },
-      body: params.body === undefined ? undefined : JSON.stringify(params.body),
-    });
-
-    if (response.status === 429) {
-      const body = (await response.json().catch(() => ({}))) as { retry_after?: number };
-      const waitSeconds = typeof body.retry_after === "number" ? body.retry_after : 1;
-      await sleep(Math.ceil(waitSeconds * 1000));
-      continue;
-    }
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(
-        `Discord API ${params.method} ${params.path} failed: ${response.status} ${response.statusText}${text ? ` :: ${text}` : ""}`,
-      );
-    }
-
-    if (response.status === 204) {
-      return undefined as T;
-    }
-
-    return (await response.json()) as T;
-  }
-
-  throw new Error(`Discord API ${params.method} ${params.path} exceeded retry budget.`);
+  return requestDiscordJson<T>({
+    method: params.method,
+    path: params.path,
+    headers: {
+      Authorization: params.authHeader,
+      "Content-Type": "application/json",
+    },
+    body: params.body,
+    retries: params.retries,
+    errorPrefix: "Discord API",
+  });
 }
 
 async function discordWebhookApi<T>(params: {
@@ -333,15 +376,33 @@ async function discordWebhookApi<T>(params: {
   query?: string;
   retries?: number;
 }): Promise<T> {
-  const retries = params.retries ?? 6;
   const suffix = params.query ? `?${params.query}` : "";
   const path = `/webhooks/${encodeURIComponent(params.webhookId)}/${encodeURIComponent(params.webhookToken)}${suffix}`;
+  return requestDiscordJson<T>({
+    method: params.method,
+    path,
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: params.body,
+    retries: params.retries,
+    errorPrefix: "Discord webhook API",
+  });
+}
+
+async function requestDiscordJson<T>(params: {
+  method: string;
+  path: string;
+  headers: Record<string, string>;
+  body?: unknown;
+  retries?: number;
+  errorPrefix: string;
+}): Promise<T> {
+  const retries = params.retries ?? 6;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
-    const response = await fetch(`${DISCORD_API_BASE}${path}`, {
+    const response = await fetch(`${DISCORD_API_BASE}${params.path}`, {
       method: params.method,
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: params.headers,
       body: params.body === undefined ? undefined : JSON.stringify(params.body),
     });
 
@@ -355,7 +416,9 @@ async function discordWebhookApi<T>(params: {
     if (!response.ok) {
       const text = await response.text().catch(() => "");
       throw new Error(
-        `Discord webhook API ${params.method} ${path} failed: ${response.status} ${response.statusText}${text ? ` :: ${text}` : ""}`,
+        redactForDevToolLog(
+          `${params.errorPrefix} ${params.method} ${redactDiscordApiPath(params.path)} failed: ${response.status} ${response.statusText}${text ? ` :: ${text}` : ""}`,
+        ),
       );
     }
 
@@ -366,7 +429,9 @@ async function discordWebhookApi<T>(params: {
     return (await response.json()) as T;
   }
 
-  throw new Error(`Discord webhook API ${params.method} ${path} exceeded retry budget.`);
+  throw new Error(
+    `${params.errorPrefix} ${params.method} ${redactDiscordApiPath(params.path)} exceeded retry budget.`,
+  );
 }
 
 async function readThreadBindings(filePath: string): Promise<ThreadBindingRecord[]> {
@@ -391,18 +456,14 @@ function resolveCandidateBindings(params: {
   const normalizedTargetAgent = params.targetAgent.trim().toLowerCase();
   return params.entries
     .filter((entry) => {
-      const targetKind = String(entry.targetKind || "")
-        .trim()
-        .toLowerCase();
+      const targetKind = (entry.targetKind || "").trim().toLowerCase();
       if (targetKind !== "acp") {
         return false;
       }
       if (normalizeBoundAt(entry) < params.minBoundAt) {
         return false;
       }
-      const agentId = String(entry.agentId || "")
-        .trim()
-        .toLowerCase();
+      const agentId = (entry.agentId || "").trim().toLowerCase();
       if (normalizedTargetAgent && agentId && agentId !== normalizedTargetAgent) {
         return false;
       }
@@ -433,61 +494,63 @@ function toRecentMessageRow(message: DiscordMessage) {
     id: message.id,
     author: message.author?.username || message.author?.id || "unknown",
     bot: Boolean(message.author?.bot),
-    content: (message.content || "").slice(0, 500),
+    content: previewForDevToolLog(message.content || "", 500),
   };
+}
+
+async function loadParentRecentMessages(params: {
+  args: Args;
+  readAuthHeader: string;
+}): Promise<DiscordMessage[]> {
+  if (params.args.driverMode === "openclaw") {
+    return await readMessagesWithOpenclaw({
+      openclawBin: params.args.openclawBin,
+      target: params.args.channelId,
+      limit: 20,
+    });
+  }
+  return await discordApi<DiscordMessage[]>({
+    method: "GET",
+    path: `/channels/${encodeURIComponent(params.args.channelId)}/messages?limit=20`,
+    authHeader: params.readAuthHeader,
+  });
 }
 
 function printOutput(params: { json: boolean; payload: SuccessResult | FailureResult }) {
   if (params.json) {
-    // eslint-disable-next-line no-console
-    console.log(JSON.stringify(params.payload, null, 2));
+    writeStdoutJson(params.payload);
     return;
   }
   if (params.payload.ok) {
     const success = params.payload;
-    // eslint-disable-next-line no-console
-    console.log("PASS");
-    // eslint-disable-next-line no-console
-    console.log(`smokeId: ${success.smokeId}`);
-    // eslint-disable-next-line no-console
-    console.log(`sentMessageId: ${success.sentMessageId}`);
-    // eslint-disable-next-line no-console
-    console.log(`threadId: ${success.binding.threadId}`);
-    // eslint-disable-next-line no-console
-    console.log(`sessionKey: ${success.binding.targetSessionKey}`);
-    // eslint-disable-next-line no-console
-    console.log(`ackMessageId: ${success.ackMessage.id}`);
-    // eslint-disable-next-line no-console
-    console.log(
+    writeStdoutLine("PASS");
+    writeStdoutLine(`smokeId: ${success.smokeId}`);
+    writeStdoutLine(`sentMessageId: ${success.sentMessageId}`);
+    writeStdoutLine(`threadId: ${success.binding.threadId}`);
+    writeStdoutLine(`sessionKey: ${maskIdentifier(success.binding.targetSessionKey)}`);
+    writeStdoutLine(`ackMessageId: ${success.ackMessage.id}`);
+    writeStdoutLine(
       `ackAuthor: ${success.ackMessage.authorUsername || success.ackMessage.authorId || "unknown"}`,
     );
     return;
   }
   const failure = params.payload;
-  // eslint-disable-next-line no-console
-  console.error("FAIL");
-  // eslint-disable-next-line no-console
-  console.error(`stage: ${failure.stage}`);
-  // eslint-disable-next-line no-console
-  console.error(`smokeId: ${failure.smokeId}`);
-  // eslint-disable-next-line no-console
-  console.error(`error: ${failure.error}`);
+  writeStderrLine("FAIL");
+  writeStderrLine(`stage: ${failure.stage}`);
+  writeStderrLine(`smokeId: ${failure.smokeId}`);
+  writeStderrLine(`error: ${failure.error}`);
   if (failure.diagnostics?.bindingCandidates?.length) {
-    // eslint-disable-next-line no-console
-    console.error("binding candidates:");
+    writeStderrLine("binding candidates:");
     for (const candidate of failure.diagnostics.bindingCandidates) {
-      // eslint-disable-next-line no-console
-      console.error(
+      writeStderrLine(
         `  thread=${candidate.threadId} kind=${candidate.targetKind || "?"} agent=${candidate.agentId || "?"} boundAt=${candidate.boundAt || 0} session=${candidate.targetSessionKey}`,
       );
     }
   }
   if (failure.diagnostics?.parentChannelRecent?.length) {
-    // eslint-disable-next-line no-console
-    console.error("recent parent channel messages:");
+    writeStderrLine("recent parent channel messages:");
     for (const row of failure.diagnostics.parentChannelRecent) {
-      // eslint-disable-next-line no-console
-      console.error(`  ${row.id} ${row.author}${row.bot ? " [bot]" : ""}: ${row.content || ""}`);
+      writeStderrLine(`  ${row.id} ${row.author}${row.bot ? " [bot]" : ""}: ${row.content || ""}`);
     }
   }
 }
@@ -501,7 +564,7 @@ async function run(): Promise<SuccessResult | FailureResult> {
       ok: false,
       stage: "validation",
       smokeId: "n/a",
-      error: err instanceof Error ? err.message : String(err),
+      error: safeErrorMessage(err),
     };
   }
 
@@ -554,7 +617,7 @@ async function run(): Promise<SuccessResult | FailureResult> {
         },
       });
       sentMessageId = sent.id;
-    } else {
+    } else if (args.driverMode === "webhook") {
       const botAuthHeader = resolveAuthorizationHeader({
         token: args.botToken,
         tokenPrefix: args.botTokenPrefix,
@@ -601,13 +664,39 @@ async function run(): Promise<SuccessResult | FailureResult> {
       });
       sentMessageId = sent.id;
       senderAuthorId = sent.author?.id;
+    } else {
+      setupStage = "send-message";
+      const sent = await openclawCliJson<{
+        payload?: {
+          result?: {
+            messageId?: string;
+          };
+        };
+      }>({
+        openclawBin: args.openclawBin,
+        args: [
+          "message",
+          "send",
+          "--channel",
+          "discord",
+          "--target",
+          args.channelId,
+          "--message",
+          instruction,
+          "--json",
+        ],
+      });
+      sentMessageId = sent.payload?.result?.messageId || "";
+      if (!sentMessageId) {
+        throw new Error("openclaw message send did not return payload.result.messageId");
+      }
     }
   } catch (err) {
     return {
       ok: false,
       stage: setupStage,
       smokeId,
-      error: err instanceof Error ? err.message : String(err),
+      error: safeErrorMessage(err),
     };
   }
 
@@ -638,11 +727,7 @@ async function run(): Promise<SuccessResult | FailureResult> {
     if (!winningBinding?.threadId || !winningBinding?.targetSessionKey) {
       let parentRecent: DiscordMessage[] = [];
       try {
-        parentRecent = await discordApi<DiscordMessage[]>({
-          method: "GET",
-          path: `/channels/${encodeURIComponent(args.channelId)}/messages?limit=20`,
-          authHeader: readAuthHeader,
-        });
+        parentRecent = await loadParentRecentMessages({ args, readAuthHeader });
       } catch {
         // Best effort diagnostics only.
       }
@@ -650,11 +735,11 @@ async function run(): Promise<SuccessResult | FailureResult> {
         ok: false,
         stage: "wait-binding",
         smokeId,
-        error: `Timed out waiting for new ACP thread binding (path: ${args.threadBindingsPath}).`,
+        error: `Timed out waiting for new ACP thread binding (path: ${redactHomePath(args.threadBindingsPath)}).`,
         diagnostics: {
           bindingCandidates: latestCandidates.slice(0, 6).map((entry) => ({
             threadId: entry.threadId || "",
-            targetSessionKey: entry.targetSessionKey || "",
+            targetSessionKey: maskIdentifier(entry.targetSessionKey),
             targetKind: entry.targetKind,
             agentId: entry.agentId,
             boundAt: entry.boundAt,
@@ -668,11 +753,18 @@ async function run(): Promise<SuccessResult | FailureResult> {
     let ackMessage: DiscordMessage | undefined;
     while (Date.now() < deadline && !ackMessage) {
       try {
-        const threadMessages = await discordApi<DiscordMessage[]>({
-          method: "GET",
-          path: `/channels/${encodeURIComponent(threadId)}/messages?limit=50`,
-          authHeader: readAuthHeader,
-        });
+        const threadMessages =
+          args.driverMode === "openclaw"
+            ? await readMessagesWithOpenclaw({
+                openclawBin: args.openclawBin,
+                target: threadId,
+                limit: 50,
+              })
+            : await discordApi<DiscordMessage[]>({
+                method: "GET",
+                path: `/channels/${encodeURIComponent(threadId)}/messages?limit=50`,
+                authHeader: readAuthHeader,
+              });
         ackMessage = threadMessages.find((message) => {
           const content = message.content || "";
           if (!content.includes(ackToken)) {
@@ -692,11 +784,7 @@ async function run(): Promise<SuccessResult | FailureResult> {
     if (!ackMessage) {
       let parentRecent: DiscordMessage[] = [];
       try {
-        parentRecent = await discordApi<DiscordMessage[]>({
-          method: "GET",
-          path: `/channels/${encodeURIComponent(args.channelId)}/messages?limit=20`,
-          authHeader: readAuthHeader,
-        });
+        parentRecent = await loadParentRecentMessages({ args, readAuthHeader });
       } catch {
         // Best effort diagnostics only.
       }
@@ -710,7 +798,7 @@ async function run(): Promise<SuccessResult | FailureResult> {
           bindingCandidates: [
             {
               threadId: winningBinding.threadId || "",
-              targetSessionKey: winningBinding.targetSessionKey || "",
+              targetSessionKey: maskIdentifier(winningBinding.targetSessionKey),
               targetKind: winningBinding.targetKind,
               agentId: winningBinding.agentId,
               boundAt: winningBinding.boundAt,
@@ -729,8 +817,8 @@ async function run(): Promise<SuccessResult | FailureResult> {
       binding: {
         threadId,
         targetSessionKey: winningBinding.targetSessionKey,
-        targetKind: String(winningBinding.targetKind || "acp"),
-        agentId: String(winningBinding.agentId || args.targetAgent),
+        targetKind: winningBinding.targetKind || "acp",
+        agentId: winningBinding.agentId || args.targetAgent,
         boundAt: normalizeBoundAt(winningBinding),
         accountId: winningBinding.accountId,
         channelId: winningBinding.channelId,
@@ -756,24 +844,34 @@ async function run(): Promise<SuccessResult | FailureResult> {
   }
 }
 
-if (hasFlag("--help") || hasFlag("-h")) {
-  // eslint-disable-next-line no-console
-  console.log(usage());
-  process.exit(0);
+async function main(): Promise<number> {
+  if (hasFlag("--help") || hasFlag("-h")) {
+    writeStdoutLine(usage());
+    return 0;
+  }
+  const result = await run().catch(
+    (err): FailureResult => ({
+      ok: false,
+      stage: "unexpected",
+      smokeId: "n/a",
+      error: safeErrorMessage(err),
+    }),
+  );
+  printOutput({
+    json: hasFlag("--json"),
+    payload: result,
+  });
+  return result.ok ? 0 : 1;
 }
 
-const result = await run().catch(
-  (err): FailureResult => ({
-    ok: false,
-    stage: "unexpected",
-    smokeId: "n/a",
-    error: err instanceof Error ? err.message : String(err),
-  }),
-);
+export const testing = {
+  parseDriverMode,
+  parseNumber,
+  redactDiscordApiPath,
+  resolveStateDir,
+  safeErrorMessage,
+};
 
-printOutput({
-  json: hasFlag("--json"),
-  payload: result,
-});
-
-process.exit(result.ok ? 0 : 1);
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  process.exit(await main());
+}

@@ -26,6 +26,36 @@ function makeResult(
 }
 
 describe("inferUpdateFailureHints", () => {
+  it("returns a package-manager bootstrap hint for pnpm npm-bootstrap failures", () => {
+    const result = {
+      status: "error",
+      mode: "git",
+      reason: "pnpm-npm-bootstrap-failed",
+      steps: [],
+      durationMs: 1,
+    } satisfies UpdateRunResult;
+
+    const hints = inferUpdateFailureHints(result);
+
+    expect(hints.join("\n")).toContain("bootstrap pnpm from npm");
+    expect(hints.join("\n")).toContain("Install pnpm manually");
+  });
+
+  it("returns a corepack hint when corepack is missing", () => {
+    const result = {
+      status: "error",
+      mode: "git",
+      reason: "pnpm-corepack-missing",
+      steps: [],
+      durationMs: 1,
+    } satisfies UpdateRunResult;
+
+    const hints = inferUpdateFailureHints(result);
+
+    expect(hints.join("\n")).toContain("corepack is missing");
+    expect(hints.join("\n")).toContain("Install pnpm manually");
+  });
+
   it("returns EACCES hint for global update permission failures", () => {
     const result = makeResult(
       "global update",
@@ -34,13 +64,24 @@ describe("inferUpdateFailureHints", () => {
     const hints = inferUpdateFailureHints(result);
     expect(hints.join("\n")).toContain("EACCES");
     expect(hints.join("\n")).toContain("npm config set prefix ~/.local");
+    expect(hints.join("\n")).toContain("stop the Gateway first");
   });
 
-  it("returns native optional dependency hint for node-gyp/opus failures", () => {
+  it("returns EACCES hint for staged package permission failures", () => {
     const result = makeResult(
-      "global update",
-      "node-pre-gyp ERR!\n@discordjs/opus\nnode-gyp rebuild failed",
+      "global install stage",
+      "EACCES: permission denied, mkdtemp '/usr/local/lib/node_modules/.openclaw-update-stage-'",
     );
+    const hints = inferUpdateFailureHints(result);
+    expect(hints.join("\n")).toContain("EACCES");
+    expect(hints.join("\n")).toContain("npm config set prefix ~/.local");
+    expect(hints.join("\n")).toContain("<system-npm>");
+    expect(hints.join("\n")).toContain("gateway install --force");
+    expect(hints.join("\n")).toContain("gateway restart");
+  });
+
+  it("returns native optional dependency hint for node-gyp failures", () => {
+    const result = makeResult("global update", "node-pre-gyp ERR!\nnode-gyp rebuild failed");
     const hints = inferUpdateFailureHints(result);
     expect(hints.join("\n")).toContain("--omit=optional");
   });
@@ -51,6 +92,6 @@ describe("inferUpdateFailureHints", () => {
       "npm ERR! code EACCES\nnpm ERR! Error: EACCES: permission denied",
       "pnpm",
     );
-    expect(inferUpdateFailureHints(result)).toEqual([]);
+    expect(inferUpdateFailureHints(result)).toStrictEqual([]);
   });
 });

@@ -1,17 +1,10 @@
-import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
-import { Type } from "@sinclair/typebox";
 import { describe, expect, it } from "vitest";
 import { splitSdkTools } from "./pi-embedded-runner.js";
-
-function createStubTool(name: string): AgentTool {
-  return {
-    name,
-    label: name,
-    description: "",
-    parameters: Type.Object({}),
-    execute: async () => ({}) as AgentToolResult<unknown>,
-  };
-}
+import {
+  collectRegisteredToolNames,
+  toSessionToolAllowlist,
+} from "./pi-embedded-runner/tool-name-allowlist.js";
+import { createStubTool } from "./test-helpers/pi-tool-stubs.js";
 
 describe("splitSdkTools", () => {
   const tools = [
@@ -23,11 +16,10 @@ describe("splitSdkTools", () => {
   ];
 
   it("routes all tools to customTools when sandboxed", () => {
-    const { builtInTools, customTools } = splitSdkTools({
+    const { customTools } = splitSdkTools({
       tools,
       sandboxEnabled: true,
     });
-    expect(builtInTools).toEqual([]);
     expect(customTools.map((tool) => tool.name)).toEqual([
       "read",
       "exec",
@@ -38,11 +30,10 @@ describe("splitSdkTools", () => {
   });
 
   it("routes all tools to customTools even when not sandboxed", () => {
-    const { builtInTools, customTools } = splitSdkTools({
+    const { customTools } = splitSdkTools({
       tools,
       sandboxEnabled: false,
     });
-    expect(builtInTools).toEqual([]);
     expect(customTools.map((tool) => tool.name)).toEqual([
       "read",
       "exec",
@@ -50,5 +41,16 @@ describe("splitSdkTools", () => {
       "write",
       "browser",
     ]);
+  });
+
+  it("keeps OpenClaw-managed custom tools in Pi's session allowlist", () => {
+    const { customTools } = splitSdkTools({
+      tools: [createStubTool("read"), createStubTool("sessions_spawn")],
+      sandboxEnabled: true,
+    });
+    const allowlist = toSessionToolAllowlist(collectRegisteredToolNames(customTools));
+
+    expect(customTools.map((tool) => tool.name)).toContain("sessions_spawn");
+    expect(allowlist).toContain("sessions_spawn");
   });
 });

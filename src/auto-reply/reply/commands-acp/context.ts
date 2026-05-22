@@ -1,42 +1,24 @@
-import { DISCORD_THREAD_BINDING_CHANNEL } from "../../../channels/thread-bindings-policy.js";
-import { resolveConversationIdFromTargets } from "../../../infra/outbound/conversation-id.js";
-import { parseAgentSessionKey } from "../../../routing/session-key.js";
+import { normalizeConversationText } from "../../../acp/conversation-id.js";
+import { normalizeConversationTargetRef } from "../../../infra/outbound/session-binding-normalization.js";
+import { normalizeLowercaseStringOrEmpty } from "../../../shared/string-coerce.js";
 import type { HandleCommandsParams } from "../commands-types.js";
-
-function normalizeString(value: unknown): string {
-  if (typeof value === "string") {
-    return value.trim();
-  }
-  if (typeof value === "number" || typeof value === "bigint" || typeof value === "boolean") {
-    return `${value}`.trim();
-  }
-  return "";
-}
+import {
+  resolveConversationBindingAccountIdFromMessage,
+  resolveConversationBindingChannelFromMessage,
+  resolveConversationBindingContextFromAcpCommand,
+  resolveConversationBindingThreadIdFromMessage,
+} from "../conversation-binding-input.js";
 
 export function resolveAcpCommandChannel(params: HandleCommandsParams): string {
-  const raw =
-    params.ctx.OriginatingChannel ??
-    params.command.channel ??
-    params.ctx.Surface ??
-    params.ctx.Provider;
-  return normalizeString(raw).toLowerCase();
+  const resolved = resolveConversationBindingChannelFromMessage(params.ctx, params.command.channel);
+  return normalizeLowercaseStringOrEmpty(normalizeConversationText(resolved));
 }
 
 export function resolveAcpCommandAccountId(params: HandleCommandsParams): string {
-  const accountId = normalizeString(params.ctx.AccountId);
-  return accountId || "default";
-}
-
-export function resolveAcpCommandThreadId(params: HandleCommandsParams): string | undefined {
-  const threadId =
-    params.ctx.MessageThreadId != null ? normalizeString(String(params.ctx.MessageThreadId)) : "";
-  return threadId || undefined;
-}
-
-export function resolveAcpCommandConversationId(params: HandleCommandsParams): string | undefined {
-  const fromTargets = resolveConversationIdFromTargets({
-    threadId: params.ctx.MessageThreadId,
-    targets: [params.ctx.OriginatingTo, params.command.to, params.ctx.To],
+  return resolveConversationBindingAccountIdFromMessage({
+    ctx: params.ctx,
+    cfg: params.cfg,
+    commandChannel: params.command.channel,
   });
   if (fromTargets) {
     return fromTargets;
@@ -53,8 +35,32 @@ export function resolveAcpCommandConversationId(params: HandleCommandsParams): s
   });
 }
 
-export function isAcpCommandDiscordChannel(params: HandleCommandsParams): boolean {
-  return resolveAcpCommandChannel(params) === DISCORD_THREAD_BINDING_CHANNEL;
+export function resolveAcpCommandThreadId(params: HandleCommandsParams): string | undefined {
+  return resolveConversationBindingThreadIdFromMessage(params.ctx);
+}
+
+function resolveAcpCommandConversationRef(params: HandleCommandsParams): {
+  conversationId: string;
+  parentConversationId?: string;
+} | null {
+  const resolved = resolveConversationBindingContextFromAcpCommand(params);
+  if (!resolved) {
+    return null;
+  }
+  return normalizeConversationTargetRef({
+    conversationId: resolved.conversationId,
+    parentConversationId: resolved.parentConversationId,
+  });
+}
+
+export function resolveAcpCommandConversationId(params: HandleCommandsParams): string | undefined {
+  return resolveAcpCommandConversationRef(params)?.conversationId;
+}
+
+export function resolveAcpCommandParentConversationId(
+  params: HandleCommandsParams,
+): string | undefined {
+  return resolveAcpCommandConversationRef(params)?.parentConversationId;
 }
 
 export function resolveAcpCommandBindingContext(params: HandleCommandsParams): {
@@ -62,12 +68,24 @@ export function resolveAcpCommandBindingContext(params: HandleCommandsParams): {
   accountId: string;
   threadId?: string;
   conversationId?: string;
+  parentConversationId?: string;
 } {
+  const conversationRef = resolveAcpCommandConversationRef(params);
+  if (!conversationRef) {
+    return {
+      channel: resolveAcpCommandChannel(params),
+      accountId: resolveAcpCommandAccountId(params),
+      threadId: resolveAcpCommandThreadId(params),
+    };
+  }
   return {
     channel: resolveAcpCommandChannel(params),
     accountId: resolveAcpCommandAccountId(params),
     threadId: resolveAcpCommandThreadId(params),
-    conversationId: resolveAcpCommandConversationId(params),
+    conversationId: conversationRef.conversationId,
+    ...(conversationRef.parentConversationId
+      ? { parentConversationId: conversationRef.parentConversationId }
+      : {}),
   };
 }
 

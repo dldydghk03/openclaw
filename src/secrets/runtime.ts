@@ -1,390 +1,175 @@
-import { resolveOpenClawAgentDir } from "../agents/agent-paths.js";
-import { listAgentIds, resolveAgentDir } from "../agents/agent-scope.js";
-import type { AuthProfileCredential, AuthProfileStore } from "../agents/auth-profiles.js";
+import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope-config.js";
 import {
   clearRuntimeAuthProfileStoreSnapshots,
   loadAuthProfileStoreForSecretsRuntime,
-  replaceRuntimeAuthProfileStoreSnapshots,
+  loadAuthProfileStoreWithoutExternalProfiles,
 } from "../agents/auth-profiles.js";
-import {
-  clearRuntimeConfigSnapshot,
-  setRuntimeConfigSnapshot,
-  type OpenClawConfig,
-} from "../config/config.js";
-import { coerceSecretRef, type SecretRef } from "../config/types.secrets.js";
+import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { PluginOrigin } from "../plugins/plugin-origin.types.js";
 import { resolveUserPath } from "../utils.js";
-import { secretRefKey } from "./ref-contract.js";
-import { resolveSecretRefValues, type SecretRefResolveCache } from "./resolve.js";
-import { isNonEmptyString, isRecord } from "./shared.js";
+import {
+  canUseSecretsRuntimeFastPath,
+  collectCandidateAgentDirs,
+  createEmptyRuntimeWebToolsMetadata,
+  mergeSecretsRuntimeEnv,
+  resolveRefreshAgentDirs,
+} from "./runtime-fast-path.js";
+import {
+  activateSecretsRuntimeSnapshotState,
+  clearSecretsRuntimeSnapshot as clearSecretsRuntimeSnapshotState,
+  getActiveSecretsRuntimeEnv as getActiveSecretsRuntimeEnvState,
+  getActiveSecretsRuntimeRefreshContext,
+  getActiveSecretsRuntimeSnapshot as getActiveSecretsRuntimeSnapshotState,
+  getLiveSecretsRuntimeAuthStores,
+  getPreparedSecretsRuntimeSnapshotRefreshContext,
+  registerSecretsRuntimeStateClearHook,
+  setPreparedSecretsRuntimeSnapshotRefreshContext,
+  type PreparedSecretsRuntimeSnapshot,
+  type SecretsRuntimeRefreshContext,
+} from "./runtime-state.js";
+import { getActiveRuntimeWebToolsMetadata as getActiveRuntimeWebToolsMetadataFromState } from "./runtime-web-tools-state.js";
+import type { RuntimeWebToolsMetadata } from "./runtime-web-tools.types.js";
 
-type SecretResolverWarningCode = "SECRETS_REF_OVERRIDES_PLAINTEXT";
+export type { SecretResolverWarning } from "./runtime-shared.js";
+export type { PreparedSecretsRuntimeSnapshot } from "./runtime-state.js";
 
-export type SecretResolverWarning = {
-  code: SecretResolverWarningCode;
-  path: string;
-  message: string;
-};
+registerSecretsRuntimeStateClearHook(clearRuntimeAuthProfileStoreSnapshots);
 
-export type PreparedSecretsRuntimeSnapshot = {
-  sourceConfig: OpenClawConfig;
+let runtimeManifestPromise: Promise<typeof import("./runtime-manifest.runtime.js")> | null = null;
+let runtimePreparePromise: Promise<typeof import("./runtime-prepare.runtime.js")> | null = null;
+
+function loadRuntimeManifestHelpers() {
+  runtimeManifestPromise ??= import("./runtime-manifest.runtime.js");
+  return runtimeManifestPromise;
+}
+
+function loadRuntimePrepareHelpers() {
+  runtimePreparePromise ??= import("./runtime-prepare.runtime.js");
+  return runtimePreparePromise;
+}
+
+async function resolveLoadablePluginOrigins(params: {
   config: OpenClawConfig;
-  authStores: Array<{ agentDir: string; store: AuthProfileStore }>;
-  warnings: SecretResolverWarning[];
-};
-
-type ProviderLike = {
-  apiKey?: unknown;
-};
-
-type SkillEntryLike = {
-  apiKey?: unknown;
-};
-
-type GoogleChatAccountLike = {
-  serviceAccount?: unknown;
-  serviceAccountRef?: unknown;
-  accounts?: Record<string, unknown>;
-};
-
-type ApiKeyCredentialLike = AuthProfileCredential & {
-  type: "api_key";
-  key?: string;
-  keyRef?: unknown;
-};
-
-type TokenCredentialLike = AuthProfileCredential & {
-  type: "token";
-  token?: string;
-  tokenRef?: unknown;
-};
-
-type SecretAssignment = {
-  ref: SecretRef;
-  path: string;
-  expected: "string" | "string-or-object";
-  apply: (value: unknown) => void;
-};
-
-type ResolverContext = {
-  sourceConfig: OpenClawConfig;
   env: NodeJS.ProcessEnv;
-  cache: SecretRefResolveCache;
-  warnings: SecretResolverWarning[];
-  assignments: SecretAssignment[];
-};
-
-type SecretDefaults = NonNullable<OpenClawConfig["secrets"]>["defaults"];
-
-let activeSnapshot: PreparedSecretsRuntimeSnapshot | null = null;
-
-function cloneSnapshot(snapshot: PreparedSecretsRuntimeSnapshot): PreparedSecretsRuntimeSnapshot {
-  return {
-    sourceConfig: structuredClone(snapshot.sourceConfig),
-    config: structuredClone(snapshot.config),
-    authStores: snapshot.authStores.map((entry) => ({
-      agentDir: entry.agentDir,
-      store: structuredClone(entry.store),
-    })),
-    warnings: snapshot.warnings.map((warning) => ({ ...warning })),
-  };
-}
-
-function pushAssignment(context: ResolverContext, assignment: SecretAssignment): void {
-  context.assignments.push(assignment);
-}
-
-function collectModelProviderAssignments(params: {
-  providers: Record<string, ProviderLike>;
-  defaults: SecretDefaults | undefined;
-  context: ResolverContext;
-}): void {
-  for (const [providerId, provider] of Object.entries(params.providers)) {
-    const ref = coerceSecretRef(provider.apiKey, params.defaults);
-    if (!ref) {
-      continue;
-    }
-    pushAssignment(params.context, {
-      ref,
-      path: `models.providers.${providerId}.apiKey`,
-      expected: "string",
-      apply: (value) => {
-        provider.apiKey = value;
-      },
-    });
-  }
-}
-
-function collectSkillAssignments(params: {
-  entries: Record<string, SkillEntryLike>;
-  defaults: SecretDefaults | undefined;
-  context: ResolverContext;
-}): void {
-  for (const [skillKey, entry] of Object.entries(params.entries)) {
-    const ref = coerceSecretRef(entry.apiKey, params.defaults);
-    if (!ref) {
-      continue;
-    }
-    pushAssignment(params.context, {
-      ref,
-      path: `skills.entries.${skillKey}.apiKey`,
-      expected: "string",
-      apply: (value) => {
-        entry.apiKey = value;
-      },
-    });
-  }
-}
-
-function collectGoogleChatAccountAssignment(params: {
-  target: GoogleChatAccountLike;
-  path: string;
-  defaults: SecretDefaults | undefined;
-  context: ResolverContext;
-}): void {
-  const explicitRef = coerceSecretRef(params.target.serviceAccountRef, params.defaults);
-  const inlineRef = coerceSecretRef(params.target.serviceAccount, params.defaults);
-  const ref = explicitRef ?? inlineRef;
-  if (!ref) {
-    return;
-  }
-  if (
-    explicitRef &&
-    params.target.serviceAccount !== undefined &&
-    !coerceSecretRef(params.target.serviceAccount, params.defaults)
-  ) {
-    params.context.warnings.push({
-      code: "SECRETS_REF_OVERRIDES_PLAINTEXT",
-      path: params.path,
-      message: `${params.path}: serviceAccountRef is set; runtime will ignore plaintext serviceAccount.`,
-    });
-  }
-  pushAssignment(params.context, {
-    ref,
-    path: `${params.path}.serviceAccount`,
-    expected: "string-or-object",
-    apply: (value) => {
-      params.target.serviceAccount = value;
-    },
+}): Promise<ReadonlyMap<string, PluginOrigin>> {
+  const workspaceDir = resolveAgentWorkspaceDir(
+    params.config,
+    resolveDefaultAgentId(params.config),
+  );
+  const { listPluginOriginsFromMetadataSnapshot, loadPluginMetadataSnapshot } =
+    await loadRuntimeManifestHelpers();
+  const snapshot = loadPluginMetadataSnapshot({
+    config: params.config,
+    workspaceDir,
+    env: params.env,
   });
+  return listPluginOriginsFromMetadataSnapshot(snapshot);
 }
 
-function collectGoogleChatAssignments(params: {
-  googleChat: GoogleChatAccountLike;
-  defaults: SecretDefaults | undefined;
-  context: ResolverContext;
-}): void {
-  collectGoogleChatAccountAssignment({
-    target: params.googleChat,
-    path: "channels.googlechat",
-    defaults: params.defaults,
-    context: params.context,
-  });
-  if (!isRecord(params.googleChat.accounts)) {
-    return;
-  }
-  for (const [accountId, account] of Object.entries(params.googleChat.accounts)) {
-    if (!isRecord(account)) {
-      continue;
-    }
-    collectGoogleChatAccountAssignment({
-      target: account as GoogleChatAccountLike,
-      path: `channels.googlechat.accounts.${accountId}`,
-      defaults: params.defaults,
-      context: params.context,
-    });
-  }
+function hasConfiguredPluginEntries(config: OpenClawConfig): boolean {
+  const entries = config.plugins?.entries;
+  return (
+    !!entries &&
+    typeof entries === "object" &&
+    !Array.isArray(entries) &&
+    Object.keys(entries).length > 0
+  );
 }
 
-function collectConfigAssignments(params: {
-  config: OpenClawConfig;
-  context: ResolverContext;
-}): void {
-  const defaults = params.context.sourceConfig.secrets?.defaults;
-  const providers = params.config.models?.providers as Record<string, ProviderLike> | undefined;
-  if (providers) {
-    collectModelProviderAssignments({
-      providers,
-      defaults,
-      context: params.context,
-    });
-  }
-
-  const skillEntries = params.config.skills?.entries as Record<string, SkillEntryLike> | undefined;
-  if (skillEntries) {
-    collectSkillAssignments({
-      entries: skillEntries,
-      defaults,
-      context: params.context,
-    });
-  }
-
-  const googleChat = params.config.channels?.googlechat as GoogleChatAccountLike | undefined;
-  if (googleChat) {
-    collectGoogleChatAssignments({
-      googleChat,
-      defaults,
-      context: params.context,
-    });
-  }
-}
-
-function collectApiKeyProfileAssignment(params: {
-  profile: ApiKeyCredentialLike;
-  profileId: string;
-  agentDir: string;
-  defaults: SecretDefaults | undefined;
-  context: ResolverContext;
-}): void {
-  const keyRef = coerceSecretRef(params.profile.keyRef, params.defaults);
-  const inlineKeyRef = keyRef ? null : coerceSecretRef(params.profile.key, params.defaults);
-  const resolvedKeyRef = keyRef ?? inlineKeyRef;
-  if (!resolvedKeyRef) {
-    return;
-  }
-  if (keyRef && isNonEmptyString(params.profile.key)) {
-    params.context.warnings.push({
-      code: "SECRETS_REF_OVERRIDES_PLAINTEXT",
-      path: `${params.agentDir}.auth-profiles.${params.profileId}.key`,
-      message: `auth-profiles ${params.profileId}: keyRef is set; runtime will ignore plaintext key.`,
-    });
-  }
-  pushAssignment(params.context, {
-    ref: resolvedKeyRef,
-    path: `${params.agentDir}.auth-profiles.${params.profileId}.key`,
-    expected: "string",
-    apply: (value) => {
-      params.profile.key = String(value);
-    },
-  });
-}
-
-function collectTokenProfileAssignment(params: {
-  profile: TokenCredentialLike;
-  profileId: string;
-  agentDir: string;
-  defaults: SecretDefaults | undefined;
-  context: ResolverContext;
-}): void {
-  const tokenRef = coerceSecretRef(params.profile.tokenRef, params.defaults);
-  const inlineTokenRef = tokenRef ? null : coerceSecretRef(params.profile.token, params.defaults);
-  const resolvedTokenRef = tokenRef ?? inlineTokenRef;
-  if (!resolvedTokenRef) {
-    return;
-  }
-  if (tokenRef && isNonEmptyString(params.profile.token)) {
-    params.context.warnings.push({
-      code: "SECRETS_REF_OVERRIDES_PLAINTEXT",
-      path: `${params.agentDir}.auth-profiles.${params.profileId}.token`,
-      message: `auth-profiles ${params.profileId}: tokenRef is set; runtime will ignore plaintext token.`,
-    });
-  }
-  pushAssignment(params.context, {
-    ref: resolvedTokenRef,
-    path: `${params.agentDir}.auth-profiles.${params.profileId}.token`,
-    expected: "string",
-    apply: (value) => {
-      params.profile.token = String(value);
-    },
-  });
-}
-
-function collectAuthStoreAssignments(params: {
-  store: AuthProfileStore;
-  context: ResolverContext;
-  agentDir: string;
-}): void {
-  const defaults = params.context.sourceConfig.secrets?.defaults;
-  for (const [profileId, profile] of Object.entries(params.store.profiles)) {
-    if (profile.type === "api_key") {
-      collectApiKeyProfileAssignment({
-        profile: profile as ApiKeyCredentialLike,
-        profileId,
-        agentDir: params.agentDir,
-        defaults,
-        context: params.context,
-      });
-      continue;
-    }
-    if (profile.type === "token") {
-      collectTokenProfileAssignment({
-        profile: profile as TokenCredentialLike,
-        profileId,
-        agentDir: params.agentDir,
-        defaults,
-        context: params.context,
-      });
-    }
-  }
-}
-
-function applyAssignments(params: {
-  assignments: SecretAssignment[];
-  resolved: Map<string, unknown>;
-}): void {
-  for (const assignment of params.assignments) {
-    const key = secretRefKey(assignment.ref);
-    if (!params.resolved.has(key)) {
-      throw new Error(`Secret reference "${key}" resolved to no value.`);
-    }
-    const value = params.resolved.get(key);
-    if (assignment.expected === "string") {
-      if (!isNonEmptyString(value)) {
-        throw new Error(`${assignment.path} resolved to a non-string or empty value.`);
-      }
-      assignment.apply(value);
-      continue;
-    }
-    if (!(isNonEmptyString(value) || isRecord(value))) {
-      throw new Error(`${assignment.path} resolved to an unsupported value type.`);
-    }
-    assignment.apply(value);
-  }
-}
-
-function collectCandidateAgentDirs(config: OpenClawConfig): string[] {
-  const dirs = new Set<string>();
-  dirs.add(resolveUserPath(resolveOpenClawAgentDir()));
-  for (const agentId of listAgentIds(config)) {
-    dirs.add(resolveUserPath(resolveAgentDir(config, agentId)));
-  }
-  return [...dirs];
+function hasConfiguredChannelEntries(config: OpenClawConfig): boolean {
+  const channels = config.channels;
+  return (
+    !!channels &&
+    typeof channels === "object" &&
+    !Array.isArray(channels) &&
+    Object.keys(channels).some((channelId) => channelId !== "defaults")
+  );
 }
 
 export async function prepareSecretsRuntimeSnapshot(params: {
   config: OpenClawConfig;
   env?: NodeJS.ProcessEnv;
   agentDirs?: string[];
+  includeAuthStoreRefs?: boolean;
   loadAuthStore?: (agentDir?: string) => AuthProfileStore;
+  /** Test override for discovered loadable plugins and their origins. */
+  loadablePluginOrigins?: ReadonlyMap<string, PluginOrigin>;
 }): Promise<PreparedSecretsRuntimeSnapshot> {
+  const runtimeEnv = mergeSecretsRuntimeEnv(params.env);
   const sourceConfig = structuredClone(params.config);
   const resolvedConfig = structuredClone(params.config);
-  const context: ResolverContext = {
+  const includeAuthStoreRefs = params.includeAuthStoreRefs ?? true;
+  let authStores: Array<{ agentDir: string; store: AuthProfileStore }> = [];
+  const fastPathLoadAuthStore = params.loadAuthStore ?? loadAuthProfileStoreWithoutExternalProfiles;
+  const candidateDirs = params.agentDirs?.length
+    ? [...new Set(params.agentDirs.map((entry) => resolveUserPath(entry, runtimeEnv)))]
+    : collectCandidateAgentDirs(resolvedConfig, runtimeEnv);
+  if (includeAuthStoreRefs) {
+    for (const agentDir of candidateDirs) {
+      authStores.push({
+        agentDir,
+        store: structuredClone(fastPathLoadAuthStore(agentDir)),
+      });
+    }
+  }
+  if (canUseSecretsRuntimeFastPath({ sourceConfig, authStores })) {
+    const snapshot = {
+      sourceConfig,
+      config: resolvedConfig,
+      authStores,
+      warnings: [],
+      webTools: createEmptyRuntimeWebToolsMetadata(),
+    };
+    setPreparedSecretsRuntimeSnapshotRefreshContext(snapshot, {
+      env: runtimeEnv,
+      explicitAgentDirs: params.agentDirs?.length ? [...candidateDirs] : null,
+      includeAuthStoreRefs,
+      loadAuthStore: fastPathLoadAuthStore,
+      loadablePluginOrigins: params.loadablePluginOrigins ?? new Map<string, PluginOrigin>(),
+    });
+    return snapshot;
+  }
+
+  const {
+    applyResolvedAssignments,
+    collectAuthStoreAssignments,
+    collectConfigAssignments,
+    createResolverContext,
+    resolveRuntimeWebTools,
+    resolveSecretRefValues,
+  } = await loadRuntimePrepareHelpers();
+  const loadablePluginOrigins =
+    params.loadablePluginOrigins ??
+    (hasConfiguredPluginEntries(sourceConfig) || hasConfiguredChannelEntries(sourceConfig)
+      ? await resolveLoadablePluginOrigins({ config: sourceConfig, env: runtimeEnv })
+      : new Map<string, PluginOrigin>());
+  const context = createResolverContext({
     sourceConfig,
-    env: params.env ?? process.env,
-    cache: {},
-    warnings: [],
-    assignments: [],
-  };
+    env: runtimeEnv,
+  });
 
   collectConfigAssignments({
     config: resolvedConfig,
     context,
+    loadablePluginOrigins,
   });
 
-  const loadAuthStore = params.loadAuthStore ?? loadAuthProfileStoreForSecretsRuntime;
-  const candidateDirs = params.agentDirs?.length
-    ? [...new Set(params.agentDirs.map((entry) => resolveUserPath(entry)))]
-    : collectCandidateAgentDirs(resolvedConfig);
-
-  const authStores: Array<{ agentDir: string; store: AuthProfileStore }> = [];
-  for (const agentDir of candidateDirs) {
-    const store = structuredClone(loadAuthStore(agentDir));
-    collectAuthStoreAssignments({
-      store,
-      context,
-      agentDir,
-    });
-    authStores.push({ agentDir, store });
+  if (includeAuthStoreRefs) {
+    const loadAuthStore = params.loadAuthStore ?? loadAuthProfileStoreForSecretsRuntime;
+    if (!params.loadAuthStore) {
+      authStores = candidateDirs.map((agentDir) => ({
+        agentDir,
+        store: structuredClone(loadAuthStore(agentDir)),
+      }));
+    }
+    for (const entry of authStores) {
+      collectAuthStoreAssignments({
+        store: entry.store,
+        context,
+        agentDir: entry.agentDir,
+      });
+    }
   }
 
   if (context.assignments.length > 0) {
@@ -394,33 +179,109 @@ export async function prepareSecretsRuntimeSnapshot(params: {
       env: context.env,
       cache: context.cache,
     });
-    applyAssignments({
+    applyResolvedAssignments({
       assignments: context.assignments,
       resolved,
     });
   }
 
-  return {
+  const snapshot = {
     sourceConfig,
     config: resolvedConfig,
     authStores,
     warnings: context.warnings,
+    webTools: await resolveRuntimeWebTools({
+      sourceConfig,
+      resolvedConfig,
+      context,
+    }),
   };
+  setPreparedSecretsRuntimeSnapshotRefreshContext(snapshot, {
+    env: runtimeEnv,
+    explicitAgentDirs: params.agentDirs?.length ? [...candidateDirs] : null,
+    includeAuthStoreRefs,
+    loadAuthStore: params.loadAuthStore ?? loadAuthProfileStoreForSecretsRuntime,
+    loadablePluginOrigins,
+  });
+  return snapshot;
 }
 
 export function activateSecretsRuntimeSnapshot(snapshot: PreparedSecretsRuntimeSnapshot): void {
-  const next = cloneSnapshot(snapshot);
-  setRuntimeConfigSnapshot(next.config, next.sourceConfig);
-  replaceRuntimeAuthProfileStoreSnapshots(next.authStores);
-  activeSnapshot = next;
+  const refreshContext =
+    getPreparedSecretsRuntimeSnapshotRefreshContext(snapshot) ??
+    getActiveSecretsRuntimeRefreshContext() ??
+    ({
+      env: { ...process.env } as Record<string, string | undefined>,
+      explicitAgentDirs: null,
+      includeAuthStoreRefs: snapshot.authStores.length > 0,
+      loadAuthStore: loadAuthProfileStoreForSecretsRuntime,
+      loadablePluginOrigins: new Map<string, PluginOrigin>(),
+    } satisfies SecretsRuntimeRefreshContext);
+  activateSecretsRuntimeSnapshotState({
+    snapshot,
+    refreshContext,
+    refreshHandler: {
+      refresh: async ({ sourceConfig, includeAuthStoreRefs }) => {
+        const activeRefreshContext = getActiveSecretsRuntimeRefreshContext();
+        const activeSnapshot = getActiveSecretsRuntimeSnapshotState();
+        if (!activeSnapshot || !activeRefreshContext) {
+          return false;
+        }
+        const oneShotSkipAuthStoreRefs =
+          includeAuthStoreRefs === false && activeRefreshContext.includeAuthStoreRefs;
+        const refreshed = await prepareSecretsRuntimeSnapshot({
+          config: sourceConfig,
+          env: activeRefreshContext.env,
+          agentDirs: resolveRefreshAgentDirs(sourceConfig, activeRefreshContext),
+          includeAuthStoreRefs: includeAuthStoreRefs ?? activeRefreshContext.includeAuthStoreRefs,
+          loadablePluginOrigins: activeRefreshContext.loadablePluginOrigins,
+          ...(activeRefreshContext.loadAuthStore
+            ? { loadAuthStore: activeRefreshContext.loadAuthStore }
+            : {}),
+        });
+        if (oneShotSkipAuthStoreRefs) {
+          refreshed.authStores = getLiveSecretsRuntimeAuthStores();
+          setPreparedSecretsRuntimeSnapshotRefreshContext(refreshed, activeRefreshContext);
+        }
+        activateSecretsRuntimeSnapshot(refreshed);
+        return true;
+      },
+    },
+  });
+}
+
+export async function refreshActiveSecretsRuntimeSnapshot(): Promise<boolean> {
+  const activeSnapshot = getActiveSecretsRuntimeSnapshotState();
+  const activeRefreshContext = getActiveSecretsRuntimeRefreshContext();
+  if (!activeSnapshot || !activeRefreshContext) {
+    return false;
+  }
+  const refreshed = await prepareSecretsRuntimeSnapshot({
+    config: activeSnapshot.sourceConfig,
+    env: activeRefreshContext.env,
+    agentDirs: resolveRefreshAgentDirs(activeSnapshot.sourceConfig, activeRefreshContext),
+    includeAuthStoreRefs: activeRefreshContext.includeAuthStoreRefs,
+    loadablePluginOrigins: activeRefreshContext.loadablePluginOrigins,
+    ...(activeRefreshContext.loadAuthStore
+      ? { loadAuthStore: activeRefreshContext.loadAuthStore }
+      : {}),
+  });
+  activateSecretsRuntimeSnapshot(refreshed);
+  return true;
 }
 
 export function getActiveSecretsRuntimeSnapshot(): PreparedSecretsRuntimeSnapshot | null {
-  return activeSnapshot ? cloneSnapshot(activeSnapshot) : null;
+  return getActiveSecretsRuntimeSnapshotState();
+}
+
+export function getActiveSecretsRuntimeEnv(): NodeJS.ProcessEnv {
+  return getActiveSecretsRuntimeEnvState();
+}
+
+export function getActiveRuntimeWebToolsMetadata(): RuntimeWebToolsMetadata | null {
+  return getActiveRuntimeWebToolsMetadataFromState();
 }
 
 export function clearSecretsRuntimeSnapshot(): void {
-  activeSnapshot = null;
-  clearRuntimeConfigSnapshot();
-  clearRuntimeAuthProfileStoreSnapshots();
+  clearSecretsRuntimeSnapshotState();
 }

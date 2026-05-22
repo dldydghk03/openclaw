@@ -1,6 +1,7 @@
 import { getAcpSessionManager } from "../../../acp/control-plane/manager.js";
 import { callGateway } from "../../../gateway/call.js";
-import { getSessionBindingService } from "../../../infra/outbound/session-binding-service.js";
+import { normalizeOptionalString } from "../../../shared/string-coerce.js";
+import { resolveEffectiveResetTargetSessionKey } from "../acp-reset-target.js";
 import { resolveRequesterSessionKey } from "../commands-subagents/shared.js";
 import type { HandleCommandsParams } from "../commands-types.js";
 import { resolveAcpCommandBindingContext } from "./context.js";
@@ -28,12 +29,12 @@ async function resolveSessionKeyByToken(token: string): Promise<string | null> {
 
   for (const params of attempts) {
     try {
-      const resolved = await callGateway<{ key?: string }>({
+      const resolved = await callGateway({
         method: "sessions.resolve",
         params,
         timeoutMs: 8_000,
       });
-      const key = typeof resolved?.key === "string" ? resolved.key.trim() : "";
+      const key = normalizeOptionalString(resolved?.key) ?? "";
       if (key) {
         return key;
       }
@@ -134,39 +135,36 @@ export function clearRecentAcpTargetForRequester(params: {
 }
 
 export function resolveBoundAcpThreadSessionKey(params: HandleCommandsParams): string | undefined {
+  const commandTargetSessionKey = normalizeOptionalString(params.ctx.CommandTargetSessionKey) ?? "";
+  const activeSessionKey =
+    commandTargetSessionKey || (normalizeOptionalString(params.sessionKey) ?? "");
   const bindingContext = resolveAcpCommandBindingContext(params);
-  if (!bindingContext.channel || !bindingContext.conversationId) {
-    return undefined;
-  }
-  const binding = getSessionBindingService().resolveByConversation({
+  return resolveEffectiveResetTargetSessionKey({
+    cfg: params.cfg,
     channel: bindingContext.channel,
     accountId: bindingContext.accountId,
     conversationId: bindingContext.conversationId,
+    parentConversationId: bindingContext.parentConversationId,
+    activeSessionKey,
+    allowNonAcpBindingSessionKey: true,
+    skipConfiguredFallbackWhenActiveSessionNonAcp: false,
   });
-  if (!binding || binding.targetKind !== "session") {
-    return undefined;
-  }
-  return binding.targetSessionKey.trim() || undefined;
 }
 
 export async function resolveAcpTargetSessionKey(params: {
   commandParams: HandleCommandsParams;
   token?: string;
 }): Promise<{ ok: true; sessionKey: string } | { ok: false; error: string }> {
-  const token = params.token?.trim() || "";
+  const token = normalizeOptionalString(params.token) ?? "";
   if (token) {
     const resolved = await resolveSessionKeyByToken(token);
-    if (!resolved) {
-      return {
-        ok: false,
-        error: `Unable to resolve session target: ${token}`,
-      };
+    if (resolved) {
+      return { ok: true, sessionKey: resolved };
     }
-    rememberRecentAcpTargetForRequester({
-      commandParams: params.commandParams,
-      sessionKey: resolved,
-    });
-    return { ok: true, sessionKey: resolved };
+    // Token was supplied but could not be resolved as a session key/id/label.
+    // Fall through to thread-bound resolution so that callers that auto-fill
+    // the current thread ID as the token (e.g. Discord slash commands) still
+    // reach the correct session via the binding context.
   }
 
   const threadBound = resolveBoundAcpThreadSessionKey(params.commandParams);
@@ -181,11 +179,10 @@ export async function resolveAcpTargetSessionKey(params: {
     };
   }
 
-  const recentRequesterAcpSessionKey = getRecentRequesterAcpSessionKey(params.commandParams);
-  if (recentRequesterAcpSessionKey) {
+  if (token) {
     return {
-      ok: true,
-      sessionKey: recentRequesterAcpSessionKey,
+      ok: false,
+      error: `Unable to resolve session target: ${token}`,
     };
   }
 

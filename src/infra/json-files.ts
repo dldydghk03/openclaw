@@ -1,52 +1,46 @@
-import { randomUUID } from "node:crypto";
-import fs from "node:fs/promises";
-import path from "node:path";
+import "./fs-safe-defaults.js";
+import { replaceFileAtomic } from "./replace-file.js";
 
-export async function readJsonFile<T>(filePath: string): Promise<T | null> {
-  try {
-    const raw = await fs.readFile(filePath, "utf8");
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
-}
+export {
+  JsonFileReadError,
+  readJson,
+  readJson as readJsonFileStrict,
+  readJsonIfExists,
+  readJsonIfExists as readDurableJsonFile,
+  readJsonSync,
+  readRootJsonObjectSync,
+  readRootJsonSync,
+  readRootStructuredFileSync,
+  tryReadJson,
+  tryReadJson as readJsonFile,
+  tryReadJsonSync,
+  tryReadJsonSync as readJsonFileSync,
+  writeJson,
+  writeJson as writeJsonAtomic,
+  writeJsonSync,
+} from "@openclaw/fs-safe/json";
+export { createAsyncLock } from "@openclaw/fs-safe/advanced";
 
-export async function writeJsonAtomic(
+export type WriteTextAtomicOptions = {
+  mode?: number;
+  dirMode?: number;
+  trailingNewline?: boolean;
+  durable?: boolean;
+};
+
+export async function writeTextAtomic(
   filePath: string,
-  value: unknown,
-  options?: { mode?: number },
-) {
-  const mode = options?.mode ?? 0o600;
-  const dir = path.dirname(filePath);
-  await fs.mkdir(dir, { recursive: true });
-  const tmp = `${filePath}.${randomUUID()}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(value, null, 2), "utf8");
-  try {
-    await fs.chmod(tmp, mode);
-  } catch {
-    // best-effort; ignore on platforms without chmod
-  }
-  await fs.rename(tmp, filePath);
-  try {
-    await fs.chmod(filePath, mode);
-  } catch {
-    // best-effort; ignore on platforms without chmod
-  }
-}
-
-export function createAsyncLock() {
-  let lock: Promise<void> = Promise.resolve();
-  return async function withLock<T>(fn: () => Promise<T>): Promise<T> {
-    const prev = lock;
-    let release: (() => void) | undefined;
-    lock = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release?.();
-    }
-  };
+  content: string,
+  options?: WriteTextAtomicOptions,
+): Promise<void> {
+  const payload = options?.trailingNewline && !content.endsWith("\n") ? `${content}\n` : content;
+  await replaceFileAtomic({
+    filePath,
+    content: payload,
+    mode: options?.mode ?? 0o600,
+    dirMode: options?.dirMode ?? 0o777 & ~process.umask(),
+    copyFallbackOnPermissionError: true,
+    syncTempFile: options?.durable !== false,
+    syncParentDir: options?.durable !== false,
+  });
 }

@@ -1,4 +1,4 @@
-import type { OpenClawConfig } from "../config/config.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { AcpRuntimeError } from "./runtime/errors.js";
 
@@ -16,7 +16,8 @@ export function resolveAcpDispatchPolicyState(cfg: OpenClawConfig): AcpDispatchP
   if (!isAcpEnabledByPolicy(cfg)) {
     return "acp_disabled";
   }
-  if (cfg.acp?.dispatch?.enabled !== true) {
+  // ACP dispatch is enabled unless explicitly disabled.
+  if (cfg.acp?.dispatch?.enabled === false) {
     return "dispatch_disabled";
   }
   return "enabled";
@@ -43,6 +44,13 @@ export function resolveAcpDispatchPolicyError(cfg: OpenClawConfig): AcpRuntimeEr
     return null;
   }
   return new AcpRuntimeError("ACP_DISPATCH_DISABLED", message);
+}
+
+export function resolveAcpExplicitTurnPolicyError(cfg: OpenClawConfig): AcpRuntimeError | null {
+  if (isAcpEnabledByPolicy(cfg)) {
+    return null;
+  }
+  return new AcpRuntimeError("ACP_DISPATCH_DISABLED", ACP_DISABLED_MESSAGE);
 }
 
 export function isAcpAgentAllowedByPolicy(cfg: OpenClawConfig, agentId: string): boolean {
