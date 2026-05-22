@@ -1,4 +1,4 @@
-name: Anki Factory CI
+name: Anki Factory Pages
 
 on:
   pull_request:
@@ -44,12 +44,17 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: anki-factory-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: anki-factory-pages-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
-  public-fixtures:
-    name: Public fixture gates
+  build:
+    name: Build quality dashboard
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -66,24 +71,39 @@ jobs:
           mkdir -p anki-factory-ci-artifacts
           .github/skills/anki-factory-quality/scripts/run-smoke.sh | tee anki-factory-ci-artifacts/smoke-report.json
 
-      - name: Publish smoke summary
-        if: always()
+      - name: Build static quality dashboard
         run: |
-          if [ -f anki-factory-ci-artifacts/smoke-report.json ]; then
-            {
-              echo "### Anki Factory smoke report"
-              echo
-              echo '```json'
-              cat anki-factory-ci-artifacts/smoke-report.json
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
+          python3 tools/anki-factory/scripts/build_quality_dashboard.py \
+            --smoke-report anki-factory-ci-artifacts/smoke-report.json \
+            --out-dir anki-factory-pages \
+            --repo "${{ github.repository }}" \
+            --ref "${{ github.ref_name }}" \
+            --sha "${{ github.sha }}"
 
-      - name: Upload smoke report
+      - name: Upload dashboard artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: anki-factory-smoke-report
-          path: anki-factory-ci-artifacts/
-          if-no-files-found: warn
+          name: anki-factory-quality-dashboard
+          path: anki-factory-pages/
+          if-no-files-found: error
           retention-days: 14
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: anki-factory-pages/
+
+  deploy:
+    name: Deploy quality dashboard
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

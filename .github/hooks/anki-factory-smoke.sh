@@ -8,6 +8,8 @@ changed_files="$(
     git diff --name-only HEAD -- \
       tools/anki-factory \
       docs/anki-factory \
+      docs/anki-factory-dashboard \
+      .devcontainer/devcontainer.json \
       .github/copilot-instructions.md \
       .github/instructions/anki-factory.instructions.md \
       .github/agents/anki-factory-maintainer.agent.md \
@@ -19,10 +21,13 @@ changed_files="$(
       .github/skills/anki-factory-quality \
       .github/hooks/anki-factory-quality.json \
       .github/hooks/anki-factory-smoke.sh \
-      .github/workflows/anki-factory-ci.yml
+      .github/workflows/anki-factory-ci.yml \
+      .github/workflows/anki-factory-pages.yml
     git ls-files --others --exclude-standard -- \
       tools/anki-factory \
       docs/anki-factory \
+      docs/anki-factory-dashboard \
+      .devcontainer/devcontainer.json \
       .github/copilot-instructions.md \
       .github/instructions/anki-factory.instructions.md \
       .github/agents/anki-factory-maintainer.agent.md \
@@ -34,7 +39,8 @@ changed_files="$(
       .github/skills/anki-factory-quality \
       .github/hooks/anki-factory-quality.json \
       .github/hooks/anki-factory-smoke.sh \
-      .github/workflows/anki-factory-ci.yml
+      .github/workflows/anki-factory-ci.yml \
+      .github/workflows/anki-factory-pages.yml
   } | sort -u
 )"
 

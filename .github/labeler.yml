@@ -242,6 +242,8 @@
       - any-glob-to-any-file:
           - "tools/anki-factory/**"
           - "docs/anki-factory/**"
+          - "docs/anki-factory-dashboard/**"
+          - ".devcontainer/devcontainer.json"
           - ".github/agents/anki-factory-maintainer.agent.md"
           - ".github/ISSUE_TEMPLATE/anki_factory_improvement.yml"
           - ".github/ISSUE_TEMPLATE/deck_quality_regression.yml"
@@ -252,6 +254,7 @@
           - ".github/instructions/anki-factory.instructions.md"
           - ".github/skills/anki-factory-quality/**"
           - ".github/workflows/anki-factory-ci.yml"
+          - ".github/workflows/anki-factory-pages.yml"
 
 "security":
   - changed-files:

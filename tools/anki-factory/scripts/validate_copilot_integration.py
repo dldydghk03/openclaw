@@ -28,9 +28,14 @@ REQUIRED_FILES = [
     ".github/hooks/anki-factory-quality.json",
     ".github/hooks/anki-factory-smoke.sh",
     ".github/workflows/anki-factory-ci.yml",
+    ".github/workflows/anki-factory-pages.yml",
+    ".devcontainer/devcontainer.json",
     "docs/anki-factory/copilot-operation.md",
+    "docs/anki-factory/github-ops.md",
+    "docs/anki-factory-dashboard/index.html",
     "tools/anki-factory/scripts/validate_public_fixtures.py",
     "tools/anki-factory/scripts/run_agent_evals.py",
+    "tools/anki-factory/scripts/build_quality_dashboard.py",
     "tools/anki-factory/evals/README.md",
     "tools/anki-factory/evals/manifest.json",
 ]
@@ -41,12 +46,15 @@ PRIVATE_BOUNDARY_PATHS = [
     ".github/agents/anki-factory-maintainer.agent.md",
     ".github/skills/anki-factory-quality/SKILL.md",
     "docs/anki-factory/copilot-operation.md",
+    "docs/anki-factory/github-ops.md",
     "tools/anki-factory/README.md",
 ]
 
 EXPECTED_PATH_GLOBS = [
     "tools/anki-factory/**",
     "docs/anki-factory/**",
+    "docs/anki-factory-dashboard/**",
+    ".devcontainer/devcontainer.json",
     ".github/copilot-instructions.md",
     ".github/instructions/anki-factory.instructions.md",
     ".github/agents/anki-factory-maintainer.agent.md",
@@ -59,6 +67,7 @@ EXPECTED_PATH_GLOBS = [
     ".github/hooks/anki-factory-*.json",
     ".github/hooks/anki-factory-*.sh",
     ".github/workflows/anki-factory-ci.yml",
+    ".github/workflows/anki-factory-pages.yml",
 ]
 
 INSTRUCTION_BUDGET_FILES = {
@@ -208,6 +217,14 @@ def validate_hook_and_ci() -> None:
     for glob in EXPECTED_PATH_GLOBS:
         require(workflow.count(glob) >= 2, f"CI path filter must include {glob} for pull_request and push")
 
+    pages_workflow = read(".github/workflows/anki-factory-pages.yml")
+    require(SMOKE_COMMAND in pages_workflow, "Pages workflow must run the same smoke command")
+    require("tools/anki-factory/scripts/build_quality_dashboard.py" in pages_workflow, "Pages workflow must build the static quality dashboard")
+    require("actions/upload-pages-artifact@v3" in pages_workflow, "Pages workflow must upload a Pages artifact")
+    require("actions/deploy-pages@v4" in pages_workflow, "Pages workflow must deploy through GitHub Pages")
+    require("github.ref == 'refs/heads/main'" in pages_workflow, "Pages deployment must be limited to main")
+    require("pull_request:" in pages_workflow, "Pages workflow must build on PRs without deploying")
+
     smoke_script = read(SMOKE_COMMAND)
     require(AGENT_EVAL_COMMAND in smoke_script, "Smoke command must run agent evals")
     require(AGENT_EVAL_GATE in smoke_script, "Smoke command must emit agent_eval_gate")
@@ -258,8 +275,11 @@ def validate_issue_templates_and_pr_checklist() -> None:
         '"anki-factory"',
         "tools/anki-factory/**",
         "docs/anki-factory/**",
+        "docs/anki-factory-dashboard/**",
+        ".devcontainer/devcontainer.json",
         ".github/ISSUE_TEMPLATE/anki_factory_improvement.yml",
         ".github/pull_request_template.md",
+        ".github/workflows/anki-factory-pages.yml",
     ]:
         require(term in labeler, f"Labeler must include Anki Factory path term {term!r}")
 

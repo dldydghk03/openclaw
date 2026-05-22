@@ -92,4 +92,11 @@ Every Anki Factory PR should preserve a review trail:
 - `copilot_integration_gate` shows GitHub instruction, hook, CI, and template wiring health.
 - `agent_eval_gate` shows whether known good and bad agent changes are still distinguished.
 
-The repository ruleset is configured for the `Public fixture gates` status check. Keep it disabled until this workflow exists on the default branch; then switch enforcement to active so gate changes cannot merge without the public smoke path.
+The repository ruleset is configured for the `Public fixture gates` status check. Keep enforcement active after the workflow exists on the default branch so gate changes cannot merge without the public smoke path.
+
+## Dashboard And Clean Reproduction
+
+- The Pages workflow builds a public-safe quality dashboard from the smoke report only.
+- The dashboard must not include private lecture material, private APKG content, recovered exam text, Drive exports, or local run outputs.
+- Codespaces uses `.devcontainer/devcontainer.json` as the clean reproduction environment for public gates.
+- GitHub Project boards should track only synthetic or redacted Anki Factory issues; private evidence stays local.
