@@ -92,4 +92,4 @@ Every Anki Factory PR should preserve a review trail:
 - `copilot_integration_gate` shows GitHub instruction, hook, CI, and template wiring health.
 - `agent_eval_gate` shows whether known good and bad agent changes are still distinguished.
 
-The repository ruleset requires the `Public fixture gates` status check on the default branch so gate changes cannot merge without the public smoke path.
+The repository ruleset is configured for the `Public fixture gates` status check. Keep it disabled until this workflow exists on the default branch; then switch enforcement to active so gate changes cannot merge without the public smoke path.
