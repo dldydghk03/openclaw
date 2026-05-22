@@ -47,6 +47,10 @@ import { isMessagingToolSendAction } from "../../agents/pi-embedded-messaging.js
 import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import { buildAgentRuntimeOutcomePlan } from "../../agents/runtime-plan/build.js";
 import {
+  isRateLimitErrorText,
+  resolveRateLimitIntentFallbackPayload,
+} from "../../agents/rate-limit-intent-fallback.js";
+import {
   resolveGroupSessionKey,
   type SessionEntry,
   updateSessionStore,
@@ -1112,6 +1116,13 @@ export async function runAgentTurnWithFallback(params: {
   toolProgressDetail?: "explain" | "raw";
   replyMediaContext?: ReplyMediaContext;
 }): Promise<AgentRunLoopResult> {
+  const isRateLimitErrorMessage = (message: string): boolean => {
+    const lower = String(message || "").toLowerCase();
+    return (
+      lower.includes("rate limit") || lower.includes("too many requests") || /\b429\b/.test(lower)
+    );
+  };
+
   const TRANSIENT_HTTP_RETRY_DELAY_MS = 2_500;
   let didLogHeartbeatStrip = false;
   let autoCompactionCount = 0;
@@ -1264,6 +1275,18 @@ export async function runAgentTurnWithFallback(params: {
       isControlUiVisible: shouldSurfaceToControlUi,
     });
   }
+
+  const eagerIntentPayload = resolveRateLimitIntentFallbackPayload({
+    workspaceDir: params.followupRun.run.workspaceDir,
+    rawText: params.commandBody,
+  });
+  if (eagerIntentPayload) {
+    return {
+      kind: "final",
+      payload: eagerIntentPayload,
+    };
+  }
+
   let runResult: Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
   let fallbackProvider = params.followupRun.run.provider;
   let fallbackModel = params.followupRun.run.model;
@@ -2481,6 +2504,40 @@ export async function runAgentTurnWithFallback(params: {
           }),
         ];
       }
+    }
+  }
+
+  if (finalEmbeddedError && !hasPayloadText) {
+    const message = String(finalEmbeddedError.message || "");
+    if (isContextOverflowError(message)) {
+      return {
+        kind: "final",
+        payload: {
+          text: "⚠️ Context overflow — this conversation is too large for the model. Use /new to start a fresh session.",
+        },
+      };
+    }
+    if (isRateLimitErrorMessage(message)) {
+      const fallbackPayload = resolveRateLimitIntentFallbackPayload({
+        workspaceDir: params.followupRun.run.workspaceDir,
+        rawText: rawUserText,
+      }) ?? { text: "⚠️ 모델 호출 한도에 도달했습니다. 잠시 후 다시 시도해 주세요." };
+      return {
+        kind: "final",
+        payload: fallbackPayload,
+      };
+    }
+    const safeMessage = sanitizeUserFacingText(message, { errorContext: true }).replace(
+      /\.\s*$/,
+      "",
+    );
+    if (safeMessage.trim()) {
+      return {
+        kind: "final",
+        payload: {
+          text: `⚠️ Agent failed before reply: ${safeMessage}.\nLogs: openclaw logs --follow`,
+        },
+      };
     }
   }
 

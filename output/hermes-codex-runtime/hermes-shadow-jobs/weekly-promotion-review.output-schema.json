@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HermesWeeklyPromotionReview",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "generated_at",
+    "window",
+    "ready",
+    "summary",
+    "promote_core",
+    "promote_playbook",
+    "hold",
+    "archive_candidates",
+    "delete_candidates",
+    "approval_needed",
+    "next_actions"
+  ],
+  "properties": {
+    "run_id": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_date", "end_date", "shadow_days", "source_files"],
+      "properties": {
+        "start_date": { "type": "string" },
+        "end_date": { "type": "string" },
+        "shadow_days": { "type": "integer", "minimum": 0 },
+        "source_files": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "ready": { "type": "boolean" },
+    "summary": { "type": "string" },
+    "promote_core": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/promotion" }
+    },
+    "promote_playbook": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/promotion" }
+    },
+    "hold": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/candidate" }
+    },
+    "archive_candidates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/candidate" }
+    },
+    "delete_candidates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/deleteCandidate" }
+    },
+    "approval_needed": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/approval" }
+    },
+    "next_actions": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "source_files", "evidence", "reason"],
+      "properties": {
+        "title": { "type": "string" },
+        "source_files": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "reason": { "type": "string" }
+      }
+    },
+    "promotion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "source_files",
+        "evidence",
+        "reason",
+        "target_file",
+        "draft_patch_summary"
+      ],
+      "properties": {
+        "title": { "type": "string" },
+        "source_files": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "reason": { "type": "string" },
+        "target_file": { "type": "string" },
+        "draft_patch_summary": { "type": "string" }
+      }
+    },
+    "deleteCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "source_files", "evidence", "reason", "safer_archive_target"],
+      "properties": {
+        "title": { "type": "string" },
+        "source_files": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "reason": { "type": "string" },
+        "safer_archive_target": { "type": "string" }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task", "reason", "risk"],
+      "properties": {
+        "task": { "type": "string" },
+        "reason": { "type": "string" },
+        "risk": { "type": "string" }
+      }
+    }
+  }
+}

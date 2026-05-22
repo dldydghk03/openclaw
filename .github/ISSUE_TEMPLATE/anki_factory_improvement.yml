@@ -1,0 +1,71 @@
+name: Anki Factory improvement
+description: Improve public-safe Anki Factory code, schemas, fixtures, docs, or CI.
+title: "[Anki Factory]: "
+labels:
+  - anki-factory
+  - enhancement
+  - copilot-ready
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for public-safe Anki Factory engine work. Do not include private lecture notes, real APKG content, recovered exam text, screenshots, Google Drive exports, or local run outputs.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One short statement of the improvement.
+      placeholder: Tighten the table cloze validator so missing cellpadding is rejected.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Target area
+      options:
+        - Quality gate
+        - JSON schema
+        - Synthetic fixture
+        - Agent eval
+        - Copilot instruction
+        - CI or hook
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: current_gap
+    attributes:
+      label: Current gap
+      description: What weak behavior exists today, using synthetic examples only.
+      placeholder: A table can pass even when the visible cells are too cramped for review.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_change
+    attributes:
+      label: Proposed change
+      description: Describe the code, schema, fixture, or documentation change.
+      placeholder: Add a deterministic warning when a table lacks cellpadding or equivalent padding.
+    validations:
+      required: true
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Public-safe boundary
+      options:
+        - label: This issue uses only synthetic examples.
+          required: true
+        - label: This issue does not request private source data, APKGs, or run outputs.
+          required: true
+        - label: The change must preserve the standardized Anki note types.
+          required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Required validation
+      description: List the exact smoke or eval commands expected before PR handoff.
+      value: |
+        - .github/skills/anki-factory-quality/scripts/run-smoke.sh
+        - If a rule changes, add or update at least one synthetic good/bad eval.
+    validations:
+      required: true

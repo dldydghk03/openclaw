@@ -575,6 +575,12 @@ curl "https://api.telegram.org/bot<bot_token>/getUpdates"
     Callback clicks are passed to the agent as text:
     `callback_data: <value>`
 
+    Exec approvals integration:
+
+    - If [Exec approvals](/tools/exec-approvals#approval-forwarding-to-chat-channels) forwarding is
+      enabled for Telegram, approval prompts can include inline action buttons.
+    - Tapping a button sends the corresponding `/approve <id> ...` callback command.
+
   </Accordion>
 
   <Accordion title="Telegram message actions for agents and automation">

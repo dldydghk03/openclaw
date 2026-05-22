@@ -22,6 +22,7 @@ import {
   resolveThreadBindingThreadName,
 } from "../../../channels/thread-bindings-messages.js";
 import {
+  DISCORD_THREAD_BINDING_CHANNEL,
   formatThreadBindingDisabledError,
   formatThreadBindingSpawnDisabledError,
   requiresNativeThreadContextForThreadHere,
@@ -52,6 +53,10 @@ import {
   resolveAcpCommandThreadId,
 } from "./context.js";
 import {
+  ACP_MODE_CODEX_TEXT,
+  ACP_MODE_DEFAULT_TEXT,
+  ACP_OFF_USAGE,
+  ACP_ON_USAGE,
   ACP_STEER_OUTPUT_LIMIT,
   collectAcpErrorText,
   parseSpawnInput,
@@ -62,7 +67,89 @@ import {
   type AcpSpawnThreadMode,
   withAcpCommandErrorBoundary,
 } from "./shared.js";
-import { resolveAcpTargetSessionKey } from "./targets.js";
+import {
+  clearRecentAcpTargetForRequester,
+  rememberRecentAcpTargetForRequester,
+  resolveRecentAcpTargetForRequester,
+  resolveAcpTargetSessionKey,
+} from "./targets.js";
+
+const DEFAULT_ACP_STEER_TIMEOUT_MS = 120_000;
+const MIN_ACP_STEER_TIMEOUT_MS = 1_000;
+const MAX_ACP_STEER_TIMEOUT_MS = 10 * 60_000;
+
+function resolveAcpSteerTimeoutMs(): number {
+  const rawText = process.env.OPENCLAW_ACP_STEER_TIMEOUT_MS;
+  if (typeof rawText !== "string" || rawText.trim().length === 0) {
+    return DEFAULT_ACP_STEER_TIMEOUT_MS;
+  }
+  const raw = Number(rawText);
+  if (!Number.isFinite(raw)) {
+    return DEFAULT_ACP_STEER_TIMEOUT_MS;
+  }
+  const rounded = Math.round(raw);
+  return Math.min(MAX_ACP_STEER_TIMEOUT_MS, Math.max(MIN_ACP_STEER_TIMEOUT_MS, rounded));
+}
+
+function runtimeStatusLooksDead(runtimeStatus: { summary?: string; details?: unknown }): boolean {
+  const summary = runtimeStatus.summary?.toLowerCase() || "";
+  if (summary.includes("status=dead")) {
+    return true;
+  }
+  const details =
+    runtimeStatus.details && typeof runtimeStatus.details === "object"
+      ? (runtimeStatus.details as Record<string, unknown>)
+      : undefined;
+  return (typeof details?.status === "string" ? details.status.toLowerCase() : "") === "dead";
+}
+
+async function resolveSteerTimeoutRecoveryMessage(params: {
+  cfg: OpenClawConfig;
+  sessionKey: string;
+  timeoutMs: number;
+}): Promise<string> {
+  const acpManager = getAcpSessionManager();
+  const timeoutSeconds = Math.ceil(params.timeoutMs / 1000);
+  try {
+    const status = await acpManager.getSessionStatus({
+      cfg: params.cfg,
+      sessionKey: params.sessionKey,
+    });
+    if (!status.runtimeStatus) {
+      return [
+        `ACP steer timed out after ${timeoutSeconds}s.`,
+        "auto-check: /acp status did not return runtime health details.",
+        "next:",
+        "1) /acp status",
+        "2) /acp on",
+      ].join("\n");
+    }
+    if (runtimeStatusLooksDead(status.runtimeStatus)) {
+      return [
+        `ACP steer timed out after ${timeoutSeconds}s.`,
+        "auto-check: /acp status shows the runtime is not healthy.",
+        "next:",
+        "1) /acp on",
+        "2) /acp status",
+      ].join("\n");
+    }
+    return [
+      `ACP steer timed out after ${timeoutSeconds}s.`,
+      "auto-check: /acp status indicates the runtime is still alive.",
+      "next:",
+      "1) /acp steer <repo instruction>",
+      "2) if needed, /acp cancel and retry",
+    ].join("\n");
+  } catch {
+    return [
+      `ACP steer timed out after ${timeoutSeconds}s.`,
+      "auto-check: /acp status probe failed.",
+      "next:",
+      "1) /acp status",
+      "2) /acp on",
+    ].join("\n");
+  }
+}
 
 function resolveAcpBindingLabelNoun(params: {
   conversationId?: string;
@@ -514,8 +601,18 @@ export async function handleAcpSpawnAction(
     );
   }
 
+  const conversationAttachedTarget = resolveConversationAttachedAcpSpawnTarget({
+    commandParams: params,
+    threadMode: spawn.thread,
+  });
+  if (!conversationAttachedTarget.ok) {
+    return stopWithText(`⚠️ ${conversationAttachedTarget.error}`);
+  }
+
   const acpManager = getAcpSessionManager();
-  const sessionKey = `agent:${spawn.agentId}:acp:${randomUUID()}`;
+  const sessionKey =
+    conversationAttachedTarget.target?.sessionKey || `agent:${spawn.agentId}:acp:${randomUUID()}`;
+  const shouldDeleteSpawnSession = !conversationAttachedTarget.target;
 
   let initializedBackend = "";
   let initializedMeta: SessionAcpMeta | undefined;
@@ -577,7 +674,7 @@ export async function handleAcpSpawnAction(
       await cleanupFailedSpawn({
         cfg: params.cfg,
         sessionKey,
-        shouldDeleteSession: true,
+        shouldDeleteSession: shouldDeleteSpawnSession,
         initializedRuntime,
       });
       return stopWithText(`⚠️ ${bound.error}`);
@@ -595,12 +692,17 @@ export async function handleAcpSpawnAction(
     await cleanupFailedSpawn({
       cfg: params.cfg,
       sessionKey,
-      shouldDeleteSession: true,
+      shouldDeleteSession: shouldDeleteSpawnSession,
       initializedRuntime,
     });
     const message = formatErrorMessage(err);
     return stopWithText(`⚠️ ACP spawn failed: ${message}`);
   }
+
+  rememberRecentAcpTargetForRequester({
+    commandParams: params,
+    sessionKey,
+  });
 
   const parts = [
     `✅ Spawned ACP session ${sessionKey} (${spawn.mode}, backend ${initializedBackend}).`,
@@ -634,11 +736,18 @@ export async function handleAcpSpawnAction(
         },
       };
     }
+  } else if (conversationAttachedTarget.target) {
+    parts.push(
+      `Attached this ${conversationAttachedTarget.target.channel} conversation to ${sessionKey}.`,
+    );
   } else {
     parts.push(
       "Session is unbound (use /acp spawn ... --bind here to bind this conversation, or /focus <session-key> where supported).",
     );
   }
+  parts.push("This session is now your recent ACP target in this conversation.");
+  parts.push("You can run /acp steer, /acp status, and /acp cancel without a session key.");
+  parts.push(ACP_MODE_CODEX_TEXT);
 
   const dispatchNote = resolveAcpDispatchPolicyMessage(params.cfg);
   if (dispatchNote) {
@@ -744,14 +853,19 @@ async function runAcpSteer(params: {
   requestId: string;
 }): Promise<string> {
   const acpManager = getAcpSessionManager();
+  const timeoutMs = resolveAcpSteerTimeoutMs();
   let output = "";
+  const timeoutController = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
 
-  await acpManager.runTurn({
+  const runPromise = acpManager.runTurn({
     cfg: params.cfg,
     sessionKey: params.sessionKey,
     text: params.instruction,
     mode: "steer",
     requestId: params.requestId,
+    signal: timeoutController.signal,
     onEvent: (event) => {
       if (event.type !== "text_delta") {
         return;
@@ -767,6 +881,42 @@ async function runAcpSteer(params: {
       }
     },
   });
+
+  try {
+    await Promise.race([
+      runPromise,
+      new Promise<never>((_resolve, reject) => {
+        timeoutId = setTimeout(() => {
+          timedOut = true;
+          timeoutController.abort();
+          reject(new AcpRuntimeError("ACP_TURN_FAILED", "ACP steer timed out."));
+        }, timeoutMs);
+        timeoutId.unref?.();
+      }),
+    ]);
+  } catch (error) {
+    if (timedOut) {
+      void runPromise.catch(() => {});
+      await acpManager
+        .cancelSession({
+          cfg: params.cfg,
+          sessionKey: params.sessionKey,
+          reason: "steer-timeout",
+        })
+        .catch(() => {});
+      const recoveryMessage = await resolveSteerTimeoutRecoveryMessage({
+        cfg: params.cfg,
+        sessionKey: params.sessionKey,
+        timeoutMs,
+      });
+      throw new AcpRuntimeError("ACP_TURN_FAILED", recoveryMessage);
+    }
+    throw error;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
   return output.trim();
 }
 

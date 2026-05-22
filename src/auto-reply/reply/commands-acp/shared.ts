@@ -37,6 +37,8 @@ export const ACP_STEER_OUTPUT_LIMIT = 800;
 export { SESSION_ID_RE } from "../../../sessions/session-id.js";
 
 export type AcpAction =
+  | "on"
+  | "off"
   | "spawn"
   | "cancel"
   | "steer"
@@ -95,6 +97,8 @@ export function stopWithText(text: string): CommandHandlerResult {
 export function resolveAcpAction(tokens: string[]): AcpAction {
   const action = normalizeOptionalLowercaseString(tokens[0]);
   if (
+    action === "on" ||
+    action === "off" ||
     action === "spawn" ||
     action === "cancel" ||
     action === "steer" ||
@@ -142,8 +146,15 @@ function readOptionValue(params: { tokens: string[]; index: number; flag: string
       nextIndex: params.index + 2,
     };
   }
-  if (token.startsWith(`${params.flag}=`)) {
-    const value = token.slice(`${params.flag}=`.length).trim();
+  const longPrefix = `${normalizedFlag}=`;
+  const shortPrefix = `${normalizedShortFlag}=`;
+  const matchingPrefix = normalizedToken.startsWith(longPrefix)
+    ? longPrefix
+    : normalizedToken.startsWith(shortPrefix)
+      ? shortPrefix
+      : null;
+  if (matchingPrefix) {
+    const value = normalizedToken.slice(matchingPrefix.length).trim();
     if (!value) {
       return {
         matched: true,
@@ -458,6 +469,8 @@ export function resolveAcpHelpText(): string {
     "- Use --bind here to pin the current conversation to the ACP session without creating a child thread.",
     "- /focus and /unfocus also work with ACP session keys.",
     "- ACP dispatch of normal thread messages is controlled by acp.dispatch.enabled.",
+    "- Validate ACP with repo tasks first (cwd, file exists/read/edit/summary), then try GUI/browser instructions.",
+    '- Use plain "--session <session-key>" when steering explicitly.',
   ].join("\n");
 }
 

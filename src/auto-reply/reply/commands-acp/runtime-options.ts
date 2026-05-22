@@ -7,12 +7,14 @@ import {
   validateRuntimeModelInput,
   validateRuntimePermissionProfileInput,
 } from "../../../acp/control-plane/runtime-options.js";
+import { toAcpRuntimeError } from "../../../acp/runtime/errors.js";
 import { resolveAcpSessionIdentifierLinesFromIdentity } from "../../../acp/runtime/session-identifiers.js";
 import { normalizeLowercaseStringOrEmpty } from "../../../shared/string-coerce.js";
 import { findLatestTaskForRelatedSessionKeyForOwner } from "../../../tasks/task-owner-access.js";
 import { sanitizeTaskStatusText } from "../../../tasks/task-status.js";
 import type { CommandHandlerResult, HandleCommandsParams } from "../commands-types.js";
 import {
+  ACP_MODE_CODEX_TEXT,
   ACP_CWD_USAGE,
   ACP_MODEL_USAGE,
   ACP_PERMISSIONS_USAGE,
@@ -148,6 +150,7 @@ export async function handleAcpStatusAction(
       const lines = [
         "ACP status:",
         "-----",
+        ACP_MODE_CODEX_TEXT,
         `session: ${status.sessionKey}`,
         `backend: ${status.backend}`,
         `agent: ${status.agent}`,

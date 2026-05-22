@@ -22,6 +22,7 @@ import {
   resolveThreadBindingThreadName,
 } from "../channels/thread-bindings-messages.js";
 import {
+  DISCORD_THREAD_BINDING_CHANNEL,
   formatThreadBindingDisabledError,
   formatThreadBindingSpawnDisabledError,
   resolveThreadBindingIdleTimeoutMsForChannel,
@@ -184,6 +185,8 @@ export const ACP_SPAWN_ACCEPTED_NOTE =
   "initial ACP task queued in isolated session; follow-ups continue in the bound thread.";
 export const ACP_SPAWN_SESSION_ACCEPTED_NOTE =
   "thread-bound ACP session stays active after this task; continue in-thread for follow-ups.";
+export const ACP_SPAWN_IN_PLACE_SESSION_ACCEPTED_NOTE =
+  "ACP session attached to the current conversation; follow-ups continue here.";
 
 export function resolveAcpSpawnRuntimePolicyError(params: {
   cfg: OpenClawConfig;
@@ -1299,7 +1302,33 @@ export async function spawnAcpDirect(
     requester: requesterState,
   });
 
-  const sessionKey = `agent:${targetAgentId}:acp:${crypto.randomUUID()}`;
+  const normalizedChannel = ctx.agentChannel?.trim().toLowerCase() || "";
+  const shouldAttachToRequesterSession =
+    requestThreadBinding &&
+    normalizedChannel.length > 0 &&
+    normalizedChannel !== DISCORD_THREAD_BINDING_CHANNEL;
+
+  const inPlaceSessionKey = shouldAttachToRequesterSession ? ctx.agentSessionKey?.trim() : "";
+  if (shouldAttachToRequesterSession && !inPlaceSessionKey) {
+    return {
+      status: "error",
+      error: `thread=true for ACP sessions requires an agentSessionKey context for ${normalizedChannel}.`,
+    };
+  }
+  const inPlaceConversationId = shouldAttachToRequesterSession
+    ? resolveConversationIdForThreadBinding({
+        to: ctx.agentTo,
+        threadId: ctx.agentThreadId,
+      })
+    : undefined;
+  if (shouldAttachToRequesterSession && !inPlaceConversationId) {
+    return {
+      status: "error",
+      error: `Could not resolve a ${normalizedChannel} conversation for ACP thread spawn.`,
+    };
+  }
+
+  const sessionKey = inPlaceSessionKey || `agent:${targetAgentId}:acp:${crypto.randomUUID()}`;
   const runtimeMode = resolveAcpSessionMode(spawnMode);
   const resolvedCwd = resolveSpawnedWorkspaceInheritance({
     config: cfg,
@@ -1322,7 +1351,7 @@ export async function spawnAcpDirect(
   }
 
   let preparedBinding: PreparedAcpThreadBinding | null = null;
-  if (requestThreadBinding) {
+  if (requestThreadBinding && !shouldAttachToRequesterSession) {
     const prepared = prepareAcpThreadBinding({
       cfg,
       channel: requesterState.origin?.channel,
@@ -1385,7 +1414,7 @@ export async function spawnAcpDirect(
     await cleanupFailedAcpSpawn({
       cfg,
       sessionKey,
-      shouldDeleteSession: sessionCreated,
+      shouldDeleteSession: shouldDeleteSpawnSession && sessionCreated,
       deleteTranscript: true,
       runtimeCloseHandle: initializedRuntime,
     });
@@ -1468,7 +1497,7 @@ export async function spawnAcpDirect(
     await cleanupFailedAcpSpawn({
       cfg,
       sessionKey,
-      shouldDeleteSession: true,
+      shouldDeleteSession: shouldDeleteSpawnSession,
       deleteTranscript: true,
       runtimeCloseHandle: initializedRuntime,
     });

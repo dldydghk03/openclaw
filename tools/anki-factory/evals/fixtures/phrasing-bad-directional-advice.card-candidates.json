@@ -1,0 +1,21 @@
+[
+  {
+    "candidate_id": "eval-phrasing-bad-directional-001",
+    "note_type_key": "standard_basic",
+    "fields": {
+      "Front": "팔이 붓는 투석 접근 합병증",
+      "Back": "단서가 나오면 중심정맥 협착 쪽으로 생각하세요. 그쪽으로 잡아두세요."
+    },
+    "deck_path": "01. JBL 개념 흐름",
+    "source_refs": [
+      {
+        "source_type": "lecture",
+        "locator": "synthetic://eval/phrasing-bad-directional#1"
+      }
+    ],
+    "learning_intent": "단서, 그쪽, 잡아두세요 같은 표현을 잡는다.",
+    "likely_confusion": "문제풀이 팁을 자연스러운 설명 대신 명령형으로 쓰는 것",
+    "exam_relevance": "말투 회귀 검사용",
+    "tags": ["synthetic", "eval", "phrasing", "bad-change"]
+  }
+]

@@ -20,6 +20,19 @@ export function resolveAcpCommandAccountId(params: HandleCommandsParams): string
     cfg: params.cfg,
     commandChannel: params.command.channel,
   });
+  if (fromTargets) {
+    return fromTargets;
+  }
+
+  return resolveConversationIdFromSessionKeys({
+    channel: resolveAcpCommandChannel(params),
+    candidates: [
+      params.ctx.CommandTargetSessionKey,
+      params.ctx.SessionKey,
+      params.sessionKey,
+      params.ctx.ParentSessionKey,
+    ],
+  });
 }
 
 export function resolveAcpCommandThreadId(params: HandleCommandsParams): string | undefined {
@@ -74,4 +87,58 @@ export function resolveAcpCommandBindingContext(params: HandleCommandsParams): {
       ? { parentConversationId: conversationRef.parentConversationId }
       : {}),
   };
+}
+
+const CHAT_KIND_TOKENS = new Set(["direct", "dm", "group", "channel"]);
+
+function resolveConversationIdFromSessionKeys(params: {
+  channel: string;
+  candidates: Array<string | undefined | null>;
+}): string | undefined {
+  const expectedChannel = normalizeString(params.channel).toLowerCase();
+  if (!expectedChannel) {
+    return undefined;
+  }
+
+  for (const candidate of params.candidates) {
+    const parsed = parseAgentSessionKey(candidate);
+    if (!parsed) {
+      continue;
+    }
+    const scoped = normalizeString(parsed.rest).toLowerCase();
+    if (!scoped) {
+      continue;
+    }
+    const tokens = scoped.split(":").filter(Boolean);
+    if (tokens[0] !== expectedChannel) {
+      continue;
+    }
+
+    // Supported scoped layouts:
+    // - <channel>:<kind>:<peerId>
+    // - <channel>:<accountId>:<kind>:<peerId>
+    // Optional trailing topic/thread suffix:
+    // - ...:<peerId>:topic:<id>
+    // - ...:<peerId>:thread:<id>
+    let kindIndex = 1;
+    if (!CHAT_KIND_TOKENS.has(tokens[kindIndex] ?? "") && CHAT_KIND_TOKENS.has(tokens[2] ?? "")) {
+      kindIndex = 2;
+    }
+    if (!CHAT_KIND_TOKENS.has(tokens[kindIndex] ?? "")) {
+      continue;
+    }
+    const peerId = tokens[kindIndex + 1];
+    if (!peerId) {
+      continue;
+    }
+
+    const suffixKind = tokens[kindIndex + 2];
+    const suffixId = tokens[kindIndex + 3];
+    if ((suffixKind === "topic" || suffixKind === "thread") && suffixId) {
+      return `${peerId}:${suffixKind}:${suffixId}`;
+    }
+    return peerId;
+  }
+
+  return undefined;
 }

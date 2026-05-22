@@ -89,6 +89,187 @@ import type { TypingController } from "./typing.js";
 
 type AgentDefaults = NonNullable<OpenClawConfig["agents"]>["defaults"];
 type ExecOverrides = Pick<ExecToolDefaults, "host" | "security" | "ask" | "node">;
+type SkillsSnapshot = SessionEntry["skillsSnapshot"];
+
+const SKILL_INTENT_HINTS: Record<string, string[]> = {
+  weather: ["날씨", "기온", "forecast", "temperature", "미세먼지"],
+  "apple-reminders": [
+    "리마인더",
+    "알림",
+    "할 일",
+    "할일",
+    "todo",
+    "to do",
+    "reminder",
+    "일정 추가",
+  ],
+  obsidian: [
+    "옵시디언",
+    "obsidian",
+    "vault",
+    "노트",
+    "메모",
+    "마스터 노트",
+    "master note",
+    "anki",
+    "플래시카드",
+    "markdown",
+  ],
+  "spotify-player": ["스포티파이", "spotify"],
+  "openai-whisper": ["전사", "음성", "녹음", "자막", "transcribe", "whisper"],
+  tmux: ["tmux", "터미널 세션", "세션"],
+  "voice-call": ["통화", "전화", "콜", "voice call"],
+};
+
+const OBSIDIAN_ACTION_HINTS = [
+  "작성",
+  "생성",
+  "만들",
+  "추가",
+  "수정",
+  "편집",
+  "업데이트",
+  "정리",
+  "요약",
+  "검색",
+  "찾아",
+  "링크",
+  "연결",
+  "저장",
+  "기록",
+  "append",
+  "create",
+  "edit",
+  "update",
+  "search",
+  "summarize",
+];
+
+const WEATHER_FALSE_POSITIVE_HINTS = ["식비", "가계부", "소비", "지출", "간식비"];
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function hasExplicitSkillUseRequest(params: { normalized: string; skillKey: string }): boolean {
+  if (!/(사용|써|쓰|use|invoke|실행|적용)/i.test(params.normalized)) {
+    return false;
+  }
+  const escapedSkill = escapeRegex(params.skillKey);
+  return new RegExp(`(?:${escapedSkill}\\s*스킬(?:을|를)?|${escapedSkill}\\s*skill)`, "i").test(
+    params.normalized,
+  );
+}
+
+function normalizeSkillIntentText(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function resolveSkillConsentCandidate(params: {
+  text: string;
+  skillsSnapshot?: SkillsSnapshot;
+}): string | null {
+  const normalized = normalizeSkillIntentText(params.text);
+  if (!normalized || normalized.startsWith("/")) {
+    return null;
+  }
+  if (/^(응|네|예|ㅇㅋ|오케이|yes|yep|ok|okay|아니|아니오|no|취소|패스|skip)$/i.test(normalized)) {
+    return null;
+  }
+  if (
+    /(스킬 없이|스킬 사용하지|skill without|do not use .*skill|without .*skill)/i.test(normalized)
+  ) {
+    return null;
+  }
+  if (/(스킬 목록|skill list|어떤 스킬|what skills)/i.test(normalized)) {
+    return null;
+  }
+
+  const resolvedSkills = params.skillsSnapshot?.resolvedSkills ?? [];
+  if (resolvedSkills.length === 0) {
+    return null;
+  }
+  const isYoutubeIntent = /(유튜브|youtube)/i.test(normalized);
+  for (const skill of resolvedSkills) {
+    const skillKey = skill.name.trim().toLowerCase();
+    if (!skillKey) {
+      continue;
+    }
+    if (hasExplicitSkillUseRequest({ normalized, skillKey })) {
+      return null;
+    }
+  }
+
+  let best: { name: string; score: number } | null = null;
+  let secondBestScore = 0;
+
+  for (const skill of resolvedSkills) {
+    const skillName = skill.name.trim();
+    if (!skillName) {
+      continue;
+    }
+    const skillKey = skillName.toLowerCase();
+    if (isYoutubeIntent && skillKey === "spotify-player") {
+      continue;
+    }
+    if (
+      skillKey === "weather" &&
+      WEATHER_FALSE_POSITIVE_HINTS.some((hint) => normalized.includes(hint))
+    ) {
+      continue;
+    }
+    const tokens = skillKey.split(/[-_\s]+/).filter((token) => token.length >= 2);
+    const hints = SKILL_INTENT_HINTS[skillKey] ?? [];
+    const keywords = new Set<string>([...tokens, ...hints]);
+    const normalizedHints = new Set(hints.map((hint) => hint.toLowerCase()));
+
+    let score = 0;
+    for (const keyword of keywords) {
+      if (!keyword) {
+        continue;
+      }
+      const normalizedKeyword = keyword.toLowerCase();
+      if (normalizedKeyword.length <= 1) {
+        continue;
+      }
+      if (normalized.includes(normalizedKeyword)) {
+        score += normalizedHints.has(normalizedKeyword) ? 2 : normalizedKeyword.length >= 4 ? 2 : 1;
+      }
+    }
+    if (skillKey === "obsidian") {
+      const hasObsidianObjectHint = hints.some((hint) => normalized.includes(hint.toLowerCase()));
+      const hasObsidianActionHint = OBSIDIAN_ACTION_HINTS.some((hint) =>
+        normalized.includes(hint.toLowerCase()),
+      );
+      if (hasObsidianObjectHint && hasObsidianActionHint) {
+        score += 3;
+      }
+    }
+    if (score === 0) {
+      continue;
+    }
+    if (!best || score > best.score) {
+      secondBestScore = best?.score ?? 0;
+      best = { name: skillName, score };
+      continue;
+    }
+    if (score > secondBestScore) {
+      secondBestScore = score;
+    }
+  }
+
+  if (!best || best.score < 2) {
+    return null;
+  }
+  if (secondBestScore === best.score) {
+    return null;
+  }
+  return best.name;
+}
 
 export function resolvePromptSilentReplyConversationType(params: {
   ctx: Pick<

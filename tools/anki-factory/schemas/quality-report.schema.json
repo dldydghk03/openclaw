@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.local/anki-agent/quality-report.schema.json",
+  "title": "Anki Factory Quality Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ok", "checked_at", "target", "errors", "warnings"],
+  "properties": {
+    "ok": {
+      "type": "boolean"
+    },
+    "checked_at": {
+      "type": "string"
+    },
+    "target": {
+      "type": "string"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "candidate_id": {
+            "type": "string"
+          },
+          "note_type": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

@@ -34,6 +34,17 @@ export function resolveConversationIdFromTargets(params: {
     if (target.includes(":") && explicitConversationId === undefined) {
       continue;
     }
+
+    const prefixedTarget = target.match(/^([a-z][a-z0-9_-]*):(.*)$/i);
+    if (prefixedTarget) {
+      const prefix = prefixedTarget[1]?.trim().toLowerCase();
+      const suffix = normalizeConversationId(prefixedTarget[2]);
+      if (prefix && suffix && CHANNEL_PREFIX_ALLOWLIST.has(prefix)) {
+        return suffix;
+      }
+      continue;
+    }
+
     const mentionMatch = target.match(/^<#(\d+)>$/);
     if (mentionMatch?.[1]) {
       return mentionMatch[1];

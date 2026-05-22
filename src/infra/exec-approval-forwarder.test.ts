@@ -645,6 +645,45 @@ describe("exec approval forwarder", () => {
     await expectForwardedApprovalText({ command, expectedText });
   });
 
+  it("adds Telegram inline approval buttons for forwarded approval requests", async () => {
+    vi.useFakeTimers();
+    const { deliver, forwarder } = createForwarder({ cfg: TARGETS_CFG });
+
+    await expect(forwarder.handleRequested(baseRequest)).resolves.toBe(true);
+
+    const payload = getFirstDeliveryPayload(deliver);
+    expect(payload).toBeDefined();
+    expect(payload?.channelData).toEqual({
+      telegram: {
+        buttons: [
+          [
+            { text: "✅ Allow once", callback_data: "/approve req-1 allow-once" },
+            { text: "🧠 Always allow", callback_data: "/approve req-1 allow-always" },
+          ],
+          [{ text: "❌ Deny", callback_data: "/approve req-1 deny" }],
+        ],
+      },
+    });
+  });
+
+  it("falls back to text-only forwarding when Telegram callback_data would exceed limits", async () => {
+    vi.useFakeTimers();
+    const { deliver, forwarder } = createForwarder({ cfg: TARGETS_CFG });
+    const longId = "a".repeat(80);
+
+    await expect(
+      forwarder.handleRequested({
+        ...baseRequest,
+        id: longId,
+      }),
+    ).resolves.toBe(true);
+
+    const payload = getFirstDeliveryPayload(deliver);
+    expect(payload).toBeDefined();
+    expect(payload?.channelData).toBeUndefined();
+    expect(payload?.text).toContain(`ID: ${longId}`);
+  });
+
   it("returns false when forwarding is disabled", async () => {
     const { deliver, forwarder } = createForwarder({
       cfg: {} as OpenClawConfig,

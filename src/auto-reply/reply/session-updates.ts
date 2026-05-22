@@ -329,7 +329,7 @@ export async function ensureSkillSnapshot(params: {
     sessionStore &&
     sessionKey &&
     !isFirstTurnInSession &&
-    (!nextEntry?.skillsSnapshot || shouldRefreshSnapshot)
+    (!nextEntry?.skillsSnapshot || snapshotChanged)
   ) {
     const current = nextEntry ?? {
       sessionId: sessionId ?? crypto.randomUUID(),

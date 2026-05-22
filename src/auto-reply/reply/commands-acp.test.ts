@@ -1112,7 +1112,10 @@ describe("/acp command", () => {
   it("shows help by default", async () => {
     const result = await runDiscordAcpCommand("/acp");
     expect(result?.reply?.text).toContain("ACP commands:");
+    expect(result?.reply?.text).toContain("/acp on");
+    expect(result?.reply?.text).toContain("/acp off");
     expect(result?.reply?.text).toContain("/acp spawn");
+    expect(result?.reply?.text).toContain("Validate ACP with repo tasks first");
   });
 
   it("spawns an ACP session and binds a Discord thread", async () => {
@@ -1705,6 +1708,7 @@ describe("/acp command", () => {
       reason: "manual",
     });
     expect(result?.reply?.text).toContain("Removed 1 binding");
+    expect(result?.reply?.text).toContain("현재 모드: 기본 OpenClaw");
   });
 
   it("lists ACP sessions from the session store", async () => {
@@ -1856,6 +1860,48 @@ describe("/acp command", () => {
     expect(result?.reply?.text).not.toContain("Internal task completion event");
   });
 
+  it("explains dead persistent runtime as cold standby in /acp status", async () => {
+    hoisted.sessionBindingResolveByConversationMock.mockReturnValue(
+      createSessionBinding({
+        targetSessionKey: "agent:codex:acp:s1",
+        conversation: {
+          channel: "discord",
+          accountId: "default",
+          conversationId: "thread-1",
+          parentConversationId: "parent-1",
+        },
+      }),
+    );
+    hoisted.readAcpSessionEntryMock.mockReturnValue({
+      sessionKey: "agent:codex:acp:s1",
+      storeSessionKey: "agent:codex:acp:s1",
+      acp: {
+        backend: "acpx",
+        agent: "codex",
+        runtimeSessionName: "runtime-1",
+        mode: "persistent",
+        state: "idle",
+        lastActivityAt: Date.now(),
+      },
+    });
+    hoisted.getStatusMock.mockResolvedValueOnce({
+      summary: "status=dead pid=1234",
+      details: {
+        status: "dead",
+        ownerStatus: "inactive",
+        exitCode: null,
+        signal: null,
+      },
+    });
+
+    const params = createDiscordParams("/acp status", baseCfg);
+    params.ctx.MessageThreadId = "thread-1";
+
+    const result = await handleAcpCommand(params, true);
+    expect(result?.reply?.text).toContain("runtime: status=dead pid=1234");
+    expect(result?.reply?.text).toContain("runtimeHealth: cold");
+  });
+
   it("updates ACP runtime mode via /acp set-mode", async () => {
     mockBoundThreadSession();
     const result = await runThreadAcpCommand("/acp set-mode plan", baseCfg);
@@ -1957,6 +2003,103 @@ describe("/acp command", () => {
 
     expect(result?.reply?.text).toContain("ACP error (ACP_INVALID_RUNTIME_OPTION)");
     expect(hoisted.setConfigOptionMock).not.toHaveBeenCalled();
+  });
+
+  it("maps /acp permissions to mode when approval_policy is unsupported", async () => {
+    hoisted.sessionBindingResolveByConversationMock.mockReturnValue(
+      createSessionBinding({
+        targetSessionKey: "agent:codex:acp:s1",
+        conversation: {
+          channel: "discord",
+          accountId: "default",
+          conversationId: "thread-1",
+          parentConversationId: "parent-1",
+        },
+      }),
+    );
+    hoisted.readAcpSessionEntryMock.mockReturnValue({
+      sessionKey: "agent:codex:acp:s1",
+      storeSessionKey: "agent:codex:acp:s1",
+      acp: {
+        backend: "acpx",
+        agent: "codex",
+        runtimeSessionName: "runtime-1",
+        mode: "persistent",
+        state: "idle",
+        lastActivityAt: Date.now(),
+      },
+    });
+    hoisted.setConfigOptionMock
+      .mockRejectedValueOnce(
+        new AcpRuntimeError(
+          "ACP_BACKEND_UNSUPPORTED_CONTROL",
+          'ACP backend "acpx" does not accept config key "approval_policy".',
+        ),
+      )
+      .mockResolvedValueOnce({
+        backendExtras: {
+          mode: "full-access",
+        },
+      });
+
+    const params = createDiscordParams("/acp permissions never", baseCfg);
+    params.ctx.MessageThreadId = "thread-1";
+    const result = await handleAcpCommand(params, true);
+
+    expect(hoisted.setConfigOptionMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        key: "approval_policy",
+        value: "never",
+      }),
+    );
+    expect(hoisted.setConfigOptionMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        key: "mode",
+        value: "full-access",
+      }),
+    );
+    expect(result?.reply?.text).toContain("mapped to mode=full-access");
+  });
+
+  it("shows backend timeout hint when timeout config key is unsupported", async () => {
+    hoisted.sessionBindingResolveByConversationMock.mockReturnValue(
+      createSessionBinding({
+        targetSessionKey: "agent:codex:acp:s1",
+        conversation: {
+          channel: "discord",
+          accountId: "default",
+          conversationId: "thread-1",
+          parentConversationId: "parent-1",
+        },
+      }),
+    );
+    hoisted.readAcpSessionEntryMock.mockReturnValue({
+      sessionKey: "agent:codex:acp:s1",
+      storeSessionKey: "agent:codex:acp:s1",
+      acp: {
+        backend: "acpx",
+        agent: "codex",
+        runtimeSessionName: "runtime-1",
+        mode: "persistent",
+        state: "idle",
+        lastActivityAt: Date.now(),
+      },
+    });
+    hoisted.setConfigOptionMock.mockRejectedValueOnce(
+      new AcpRuntimeError(
+        "ACP_BACKEND_UNSUPPORTED_CONTROL",
+        'ACP backend "acpx" does not accept config key "timeout".',
+      ),
+    );
+
+    const params = createDiscordParams("/acp timeout 120", baseCfg);
+    params.ctx.MessageThreadId = "thread-1";
+    const result = await handleAcpCommand(params, true);
+
+    expect(result?.reply?.text).toContain("ACP error (ACP_BACKEND_UNSUPPORTED_CONTROL)");
+    expect(result?.reply?.text).toContain("does not support per-session timeout config");
   });
 
   it("returns actionable doctor output when backend is missing", async () => {

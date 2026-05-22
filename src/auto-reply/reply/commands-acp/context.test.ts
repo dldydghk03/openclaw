@@ -900,4 +900,44 @@ describe("commands-acp context", () => {
       parentConversationId: undefined,
     });
   });
+
+  it("falls back to telegram session key when originating targets are missing", () => {
+    const params = buildCommandTestParams("/acp spawn codex --thread auto", baseCfg, {
+      Provider: "telegram",
+      Surface: "telegram",
+      OriginatingChannel: "telegram",
+      SessionKey: "agent:main:telegram:direct:6848608231",
+    });
+
+    expect(resolveAcpCommandConversationId(params)).toBe("6848608231");
+    expect(resolveAcpCommandBindingContext(params)).toEqual({
+      channel: "telegram",
+      accountId: "default",
+      threadId: undefined,
+      conversationId: "6848608231",
+    });
+  });
+
+  it("preserves topic suffix when recovering telegram group conversation from session key", () => {
+    const params = buildCommandTestParams("/acp spawn codex --thread auto", baseCfg, {
+      Provider: "telegram",
+      Surface: "telegram",
+      OriginatingChannel: "telegram",
+      SessionKey: "agent:main:telegram:group:-1001234567890:topic:99",
+    });
+
+    expect(resolveAcpCommandConversationId(params)).toBe("-1001234567890:topic:99");
+  });
+
+  it("uses CommandTargetSessionKey for native telegram slash command context", () => {
+    const params = buildCommandTestParams("/acp spawn codex --thread auto", baseCfg, {
+      Provider: "telegram",
+      Surface: "telegram",
+      OriginatingChannel: "telegram",
+      SessionKey: "telegram:slash:6848608231",
+      CommandTargetSessionKey: "agent:main:telegram:direct:6848608231",
+    });
+
+    expect(resolveAcpCommandConversationId(params)).toBe("6848608231");
+  });
 });

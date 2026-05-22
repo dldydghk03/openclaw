@@ -1,0 +1,21 @@
+[
+  {
+    "candidate_id": "eval-bad-metadata-001",
+    "note_type_key": "standard_basic",
+    "fields": {
+      "Front": "전해질 이상 접근",
+      "Back": "learning_intent: 이 메타데이터는 카드에 보이면 안 됩니다. 이 조합이면 심전도가 더 잘 맞습니다."
+    },
+    "deck_path": "01. JBL 개념 흐름",
+    "source_refs": [
+      {
+        "source_type": "lecture",
+        "locator": "synthetic://eval/bad-metadata#1"
+      }
+    ],
+    "learning_intent": "메타데이터 누출과 어색한 표현을 잡는다.",
+    "likely_confusion": "작업용 메타데이터를 카드 본문에 넣는 것",
+    "exam_relevance": "형식 회귀 검사용",
+    "tags": ["synthetic", "eval", "bad-change"]
+  }
+]

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.local/anki-agent/reference-deck-profile.schema.json",
+  "title": "Reference APKG Deck Profile",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "path",
+    "sha256",
+    "creator_guess",
+    "note_count",
+    "card_count",
+    "note_type_counts",
+    "field_metrics",
+    "quality_signals"
+  ],
+  "properties": {
+    "path": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": "string"
+    },
+    "creator_guess": {
+      "type": "string"
+    },
+    "note_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "card_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "note_type_counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
+    "field_metrics": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "quality_signals": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "format_compliance": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

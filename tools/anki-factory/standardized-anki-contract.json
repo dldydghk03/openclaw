@@ -1,0 +1,132 @@
+{
+  "contract_version": "0.1.0-public",
+  "generated_at": "2026-05-22",
+  "purpose": "Public-safe hard gate for Anki Factory outputs. This contract excludes local APKG paths and private reference scan roots. It is intended for CI, Copilot review, and synthetic fixture validation.",
+  "source_standard_apkg": {
+    "path": "<local-standardized-anki-v1.6.apkg>",
+    "sha256": "ef6927a726338d8717d9978d4db9e91fdcafb228cfd6e5e5f5151ac7d1abec48",
+    "collection_preference": ["collection.anki21b", "collection.anki2"]
+  },
+  "absolute_rules": [
+    "Do not create a new note type.",
+    "Do not rename fields.",
+    "Do not add, remove, or reorder fields.",
+    "Do not alter card templates or CSS.",
+    "Do not use default Anki Basic/Cloze when a standardized type is required.",
+    "Improve quality only inside the existing fields.",
+    "APKG export is blocked unless format gate, preview, approval, and read-back all pass."
+  ],
+  "canonical_note_types": {
+    "standard_basic": {
+      "display_name": "@표준화 Basic",
+      "source_notetype_id": 1777275457582,
+      "type": "basic",
+      "allowed_name_exact": ["@표준화 Basic"],
+      "fields": ["Front", "Back"],
+      "template_names": ["카드 1"],
+      "source_notetype_config_sha256": "4329017d2a60dea20e9e575a29809121bc19313105f251d86d0b62cacc23a8b1",
+      "source_template_config_sha256": [
+        "381ce816af268bd5ca8ff265ed157b069e0dd1854aed1faa10e7fb5ba9a206e2"
+      ],
+      "usage": "Default concept, mechanism, comparison, short-answer, and tutor-style explanation cards.",
+      "required_fields_nonempty": ["Front", "Back"]
+    },
+    "standard_cloze": {
+      "display_name": "@표준화 Cloze",
+      "source_notetype_id": 1777275488702,
+      "type": "cloze",
+      "allowed_name_exact": ["@표준화 Cloze", "@표준화 Cloze "],
+      "fields": ["Text", "Back Extra"],
+      "template_names": ["Cloze"],
+      "source_notetype_config_sha256": "23155b0d56b9032e6c58cc7725550860d10333ff140975062becfaadbbb0ce8e",
+      "source_template_config_sha256": [
+        "3cc57d7031f21b61a625f43917b8ff99a73e0c33b4162a10615536abc3eeb06c"
+      ],
+      "rejected_duplicate_source_notetype_ids": [2505020102],
+      "rejection_reason": "The v1.6 package contains another @표준화 Cloze sample whose own sample text says not to use it. The gate identifies the canonical Cloze by field layout plus template/config fingerprint when available.",
+      "usage": "Focused cloze deletion for must-memorize names, criteria, thresholds, and paired concepts.",
+      "required_fields_nonempty": ["Text"],
+      "field_specific_rules": {
+        "Text": {
+          "must_match_regex": "\\{\\{c\\d+::[^}]+\\}\\}"
+        }
+      }
+    },
+    "standard_new_jokbo": {
+      "display_name": "@표준화 뉴족보",
+      "source_notetype_id": 1754912673430,
+      "type": "basic",
+      "allowed_name_exact": ["@표준화 뉴족보"],
+      "fields": ["문제번호", "본문", "정답 및 해설"],
+      "template_names": ["Card 1"],
+      "source_notetype_config_sha256": "d60c06d497480d81c5b09cf383a1933e7c9427131d7d4b0bf328dc2f8bf40a7e",
+      "source_template_config_sha256": [
+        "8b98f858ed679b75c2e5d86a3fff9866b94c46cad35b296e3e1d3beee6e9b3e5"
+      ],
+      "usage": "Past-exam/jokbo cards only. Use when the input has a recovered question, answer, and explanation.",
+      "required_fields_nonempty": ["문제번호", "본문", "정답 및 해설"]
+    }
+  },
+  "default_note_type_policy": {
+    "concept_or_explanation": "standard_basic",
+    "must_memorize_blank": "standard_cloze",
+    "past_exam_question": "standard_new_jokbo",
+    "image_occlusion": "blocked_until_manual_approval"
+  },
+  "reference_quality_sources": {
+    "primary_authors": ["한상준", "이상훈", "이원재"],
+    "default_scan_roots": [],
+    "learning_mode": "profile_and_rubric_only",
+    "learning_constraints": [
+      "Extract style and quality metrics, not new templates.",
+      "Never copy proprietary card content into prompts except local-only samples for manual review.",
+      "Use profiles to tune judge rubrics, banned pattern lists, deck structure, and explanation completeness checks.",
+      "For jokbo subdecks, use matching previous-Anki APKGs as problem sources and use unrelated reference decks only as explanation-style references."
+    ]
+  },
+  "content_quality_gate": {
+    "blocked_ai_smell_patterns": [
+      "~의 한 축이다",
+      "~로 묶는다",
+      "~에 기반한다",
+      "~측면에서 중요하다",
+      "핵심은 ~이다",
+      "정리하면",
+      "떠올리세요 / 떠올리라는 단서",
+      "그쪽으로 생각하세요",
+      "~쪽으로 간다 / ~쪽으로 기억한다 / ~쪽으로 잡는다",
+      "잡아두세요",
+      "중요하다 without why",
+      "강의록 문장만 기계적으로 압축한 해설"
+    ],
+    "required_explanation_signals": [
+      "why_correct",
+      "likely_confusion",
+      "exam_relevance",
+      "source_refs"
+    ],
+    "jokbo_subdeck_source_policy": [
+      "matching_previous_anki_apkg_first",
+      "append_2025_or_current_year_questions_when_available",
+      "reference_author_jokbo_decks_are_style_references_not_problem_sources",
+      "answer_first_and_option_level_explanations_required"
+    ],
+    "source_priority": [
+      "previous_anki_apkg",
+      "current_year_jokbo",
+      "jokbo",
+      "lecture",
+      "tcheck",
+      "local_reference",
+      "external_reference"
+    ]
+  },
+  "approval_and_readback_policy": {
+    "preview_required": true,
+    "approval_required": true,
+    "approval_id_required": true,
+    "apkg_readback_required": true,
+    "block_on_format_warning": true,
+    "block_on_unknown_note_type_with_notes": true
+  }
+}
