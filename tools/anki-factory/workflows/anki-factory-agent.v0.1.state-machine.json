@@ -1,0 +1,38 @@
+{
+  "workflow_id": "anki-factory-agent-v0.1",
+  "version": "0.1.0",
+  "initial_state": "source_intake",
+  "terminal_states": ["needs_card_candidates", "preview_ready", "needs_rewrite", "blocked"],
+  "states": [
+    {
+      "state": "source_intake",
+      "owner": "source_intake_agent",
+      "outputs": ["source-bundle.json", "source-intake-report.md"],
+      "next": ["deck_plan", "blocked"]
+    },
+    {
+      "state": "deck_plan",
+      "owner": "deck_architect_agent",
+      "outputs": ["deck-plan.preview.md", "coverage.plan.json"],
+      "next": ["needs_card_candidates", "quality_gate"]
+    },
+    {
+      "state": "quality_gate",
+      "owner": "quality_judge_agent",
+      "entry_requirements": ["card-candidates.preview.json"],
+      "outputs": ["quality-report.json"],
+      "next": ["human_review_pack", "needs_rewrite"]
+    },
+    {
+      "state": "human_review_pack",
+      "owner": "human_review_agent",
+      "outputs": ["human-review-pack/human-review-pack.md", "human-review-pack/human-review-queue.json"],
+      "next": ["preview_ready"]
+    }
+  ],
+  "external_write_policy": {
+    "public_runtime_smoke": "blocked",
+    "apkg_export": "requires approval_id and post-export read-back",
+    "anki_import": "manual only"
+  }
+}

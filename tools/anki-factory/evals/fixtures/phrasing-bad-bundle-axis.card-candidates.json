@@ -1,0 +1,21 @@
+[
+  {
+    "candidate_id": "eval-phrasing-bad-bundle-axis-001",
+    "note_type_key": "standard_basic",
+    "fields": {
+      "Front": "투석 접근로 비교",
+      "Back": "정맥 2.5 mm와 동맥 2 mm를 한 축으로 묶는다. 이 기준만 잡아두면 충분합니다."
+    },
+    "deck_path": "01. JBL 개념 흐름",
+    "source_refs": [
+      {
+        "source_type": "lecture",
+        "locator": "synthetic://eval/phrasing-bad-bundle#1"
+      }
+    ],
+    "learning_intent": "묶는다, 한 축 같은 어색한 표현을 잡는다.",
+    "likely_confusion": "숫자 기준을 설명하면서 부자연스러운 표현을 쓰는 것",
+    "exam_relevance": "말투 회귀 검사용",
+    "tags": ["synthetic", "eval", "phrasing", "bad-change"]
+  }
+]

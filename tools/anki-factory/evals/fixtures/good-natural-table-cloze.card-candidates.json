@@ -1,0 +1,21 @@
+[
+  {
+    "candidate_id": "eval-good-table-001",
+    "note_type_key": "standard_cloze",
+    "fields": {
+      "Text": "검사 우선순위는 증상 유무로 나누면 이해하기 쉽습니다.<br><table border=\"1\" style=\"border-collapse:collapse;width:100%;text-align:center\" cellpadding=\"5\"><tr style=\"background-color:#f2f2f2\"><th>상황</th><th>확인할 것</th><th>이유</th></tr><tr><td>증상 있음</td><td>{{c1::심전도}}</td><td>치료 결정과 바로 연결됩니다</td></tr><tr><td>증상 없음</td><td>{{c2::반복 검사}}</td><td>일시적 변화인지 확인합니다</td></tr></table>",
+      "Back Extra": "증상이 있으면 안전 문제를 먼저 해결하고, 증상이 없으면 수치가 반복되는지 확인하는 흐름입니다."
+    },
+    "deck_path": "02. 비교표 Cloze",
+    "source_refs": [
+      {
+        "source_type": "lecture",
+        "locator": "synthetic://eval/good-table#1"
+      }
+    ],
+    "learning_intent": "표에서 상황별 검사 우선순위를 회상한다.",
+    "likely_confusion": "증상 여부와 원인 평가 순서를 헷갈리는 것",
+    "exam_relevance": "보기에서 응급 확인과 원인 평가를 섞어 묻는 문제에 대비한다.",
+    "tags": ["synthetic", "eval", "good-change"]
+  }
+]

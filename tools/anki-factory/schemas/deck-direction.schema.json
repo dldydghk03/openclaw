@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.local/anki-agent/deck-direction.schema.json",
+  "title": "Anki Factory Deck Direction",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["direction_id", "density", "tone", "standard_note_type_policy"],
+  "properties": {
+    "direction_id": {
+      "type": "string",
+      "minLength": 3
+    },
+    "density": {
+      "type": "string",
+      "enum": ["minimal", "balanced", "exam_dense", "final_cram"]
+    },
+    "tone": {
+      "type": "string",
+      "enum": ["human_tutor", "exam_explanation", "concise_recall"]
+    },
+    "must_emphasize": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "avoid": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "known_weaknesses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "exam_date": {
+      "type": "string"
+    },
+    "standard_note_type_policy": {
+      "type": "string",
+      "const": "use_only_standardized_anki_v1_6_note_types"
+    }
+  }
+}

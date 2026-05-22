@@ -1,0 +1,89 @@
+name: Anki Factory CI
+
+on:
+  pull_request:
+    paths:
+      - "tools/anki-factory/**"
+      - "docs/anki-factory/**"
+      - "docs/anki-factory-dashboard/**"
+      - ".devcontainer/devcontainer.json"
+      - ".github/copilot-instructions.md"
+      - ".github/instructions/anki-factory.instructions.md"
+      - ".github/agents/anki-factory-maintainer.agent.md"
+      - ".github/ISSUE_TEMPLATE/anki_factory_improvement.yml"
+      - ".github/ISSUE_TEMPLATE/deck_quality_regression.yml"
+      - ".github/ISSUE_TEMPLATE/workflow_gate_change.yml"
+      - ".github/labeler.yml"
+      - ".github/pull_request_template.md"
+      - ".github/skills/anki-factory-quality/**"
+      - ".github/hooks/anki-factory-*.json"
+      - ".github/hooks/anki-factory-*.sh"
+      - ".github/workflows/anki-factory-ci.yml"
+      - ".github/workflows/anki-factory-pages.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "tools/anki-factory/**"
+      - "docs/anki-factory/**"
+      - "docs/anki-factory-dashboard/**"
+      - ".devcontainer/devcontainer.json"
+      - ".github/copilot-instructions.md"
+      - ".github/instructions/anki-factory.instructions.md"
+      - ".github/agents/anki-factory-maintainer.agent.md"
+      - ".github/ISSUE_TEMPLATE/anki_factory_improvement.yml"
+      - ".github/ISSUE_TEMPLATE/deck_quality_regression.yml"
+      - ".github/ISSUE_TEMPLATE/workflow_gate_change.yml"
+      - ".github/labeler.yml"
+      - ".github/pull_request_template.md"
+      - ".github/skills/anki-factory-quality/**"
+      - ".github/hooks/anki-factory-*.json"
+      - ".github/hooks/anki-factory-*.sh"
+      - ".github/workflows/anki-factory-ci.yml"
+      - ".github/workflows/anki-factory-pages.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: anki-factory-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  public-fixtures:
+    name: Public fixture gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run public Anki Factory smoke
+        run: |
+          set -o pipefail
+          mkdir -p anki-factory-ci-artifacts
+          .github/skills/anki-factory-quality/scripts/run-smoke.sh | tee anki-factory-ci-artifacts/smoke-report.json
+
+      - name: Publish smoke summary
+        if: always()
+        run: |
+          if [ -f anki-factory-ci-artifacts/smoke-report.json ]; then
+            {
+              echo "### Anki Factory smoke report"
+              echo
+              echo '```json'
+              cat anki-factory-ci-artifacts/smoke-report.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anki-factory-smoke-report
+          path: anki-factory-ci-artifacts/
+          if-no-files-found: warn
+          retention-days: 14

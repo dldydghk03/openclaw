@@ -1,0 +1,67 @@
+name: Workflow gate change
+description: Change preview, approval, read-back, export, or external-write safeguards.
+title: "[Workflow Gate]: "
+labels:
+  - anki-factory
+  - workflow-gate
+  - quality-gate
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Treat workflow gates as production safety controls. Any export, external write, file move/delete, or migration path must fail closed unless preview, approval, and read-back evidence are present.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence describing the gate change.
+      placeholder: Require read-back validation before a preview APKG is marked import-ready.
+    validations:
+      required: true
+  - type: dropdown
+    id: gate_type
+    attributes:
+      label: Gate type
+      options:
+        - Preview generation
+        - Approval record
+        - APKG export
+        - Post-export read-back
+        - File move/delete
+        - External app write
+        - Migration or cleanup
+        - CI or hook enforcement
+    validations:
+      required: true
+  - type: checkboxes
+    id: required_controls
+    attributes:
+      label: Required controls
+      options:
+        - label: The workflow requires a preview artifact before apply/export.
+          required: true
+        - label: The workflow requires an approval record or explicit non-apply scope.
+          required: true
+        - label: The workflow requires post-apply or post-export read-back.
+          required: true
+        - label: The workflow fails closed when schema fields drift.
+          required: true
+  - type: textarea
+    id: failure_mode
+    attributes:
+      label: Failure mode to prevent
+      description: What unsafe behavior should be impossible after this change?
+      placeholder: An APKG export can complete even when the approval_id is missing.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation plan
+      description: Include smoke command, synthetic fixtures, and read-back evidence expectations.
+      value: |
+        - .github/skills/anki-factory-quality/scripts/run-smoke.sh
+        - Add or update a synthetic bad-change eval if the gate can be weakened.
+        - Confirm the PR includes preview/read-back/approval evidence when applicable.
+    validations:
+      required: true
