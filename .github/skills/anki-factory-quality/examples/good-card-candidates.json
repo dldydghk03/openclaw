@@ -1,0 +1,28 @@
+[
+  {
+    "candidate_id": "skill-good-jokbo-001",
+    "note_type_key": "standard_new_jokbo",
+    "fields": {
+      "문제번호": "(25-신장학-86)",
+      "본문": "신장내과 예시 교수님, 합성 강의<br>다음 중 먼저 확인할 검사는?<br>① 식이력<br>② 심전도<br>③ 가족력",
+      "정답 및 해설": "정답: ② 심전도.<br>증상이 있으면 응급 판단이 먼저라서 ②가 답입니다.<br>① 식이력은 원인 평가에 가깝습니다.<br>② 심전도는 바로 처치 방향과 연결됩니다.<br>③ 가족력은 급성 판단보다 뒤에 옵니다."
+    },
+    "deck_path": "03. 족보 원문형",
+    "source_refs": [
+      {
+        "source_type": "previous_anki_apkg",
+        "locator": "synthetic://example#25-86"
+      }
+    ],
+    "problem_classification": {
+      "source_assignment": "matching_previous_anki",
+      "lecture_support": "direct",
+      "lecture_evidence": ["synthetic://lecture#1"],
+      "missing_or_external_points": [],
+      "visible_caveat_required": false
+    },
+    "learning_intent": "정답과 오답의 기준을 확인한다.",
+    "likely_confusion": "정답 번호만 외우는 것",
+    "exam_relevance": "보기별 판단형 문제"
+  }
+]

@@ -1,0 +1,75 @@
+name: Deck quality regression
+description: Report an Anki Factory quality issue using redacted or synthetic evidence.
+title: "[Deck Quality]: "
+labels:
+  - anki-factory
+  - deck-quality
+  - regression
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when generated cards feel mechanical, leak metadata, miss explanation depth, break standardized card shape, or regress from the preferred upper-tier deck style. Keep the issue public-safe by reducing private findings to synthetic examples.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence describing the quality regression.
+      placeholder: A cloze explanation uses stiff report-style phrasing instead of natural tutor language.
+    validations:
+      required: true
+  - type: dropdown
+    id: regression_type
+    attributes:
+      label: Regression type
+      options:
+        - Awkward phrasing
+        - Metadata visible on card
+        - Weak jokbo explanation
+        - Missing lecture support caveat
+        - Table formatting or cloze targeting
+        - Image crop or caption issue
+        - Too many or too few cards
+        - Non-standard note type or field drift
+    validations:
+      required: true
+  - type: textarea
+    id: synthetic_example
+    attributes:
+      label: Synthetic or redacted example
+      description: Show the pattern without private lecture, exam, APKG, or Drive content.
+      placeholder: |
+        Bad visible text:
+        "이 조합이면 A가 더 잘 맞습니다."
+
+        Preferred direction:
+        "여기서는 A를 고르면 됩니다. B는 검사 목적이 달라서 답이 아닙니다."
+    validations:
+      required: true
+  - type: textarea
+    id: expected_quality
+    attributes:
+      label: Expected quality
+      description: Explain what a good card should do for a no-base learner.
+      placeholder: The card should explain the answer in conversational Korean and identify why the tempting option is wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: gate_expectation
+    attributes:
+      label: Gate or eval expectation
+      description: What deterministic warning, failure, fixture, or eval should catch this next time?
+      placeholder: Add a phrasing-regression bad fixture for "더 잘 맞다" and require the quality gate warning.
+    validations:
+      required: true
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Public-safe boundary
+      options:
+        - label: The example above is synthetic or safely redacted.
+          required: true
+        - label: No private source deck, lecture text, screenshot, or recovered exam content is attached.
+          required: true
+        - label: The fix should be validated by the Anki Factory smoke command.
+          required: true

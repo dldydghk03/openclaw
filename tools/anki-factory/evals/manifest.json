@@ -1,0 +1,259 @@
+{
+  "version": "0.1.0",
+  "purpose": "Public-safe eval set for distinguishing good and bad Anki Factory agent changes.",
+  "coverage_requirements": {
+    "min_total_cases": 19,
+    "min_card_quality_cases": 3,
+    "min_phrasing_regression_cases": 5,
+    "min_copilot_integration_cases": 11,
+    "required_case_ids": [
+      "good-natural-table-cloze",
+      "bad-metadata-and-awkward-tone",
+      "bad-non-standard-note-type",
+      "phrasing-good-friendly-tutor",
+      "phrasing-bad-well-matches",
+      "phrasing-bad-bundle-axis",
+      "phrasing-bad-directional-advice",
+      "phrasing-bad-stiff-report",
+      "good-current-wiring",
+      "bad-skill-removes-smoke-command",
+      "bad-ci-drops-hook-path",
+      "bad-public-doc-private-path",
+      "bad-smoke-drops-agent-evals",
+      "bad-agent-drops-eval-policy",
+      "bad-instruction-over-budget",
+      "bad-instruction-marker-removed",
+      "bad-ci-drops-artifact-upload",
+      "bad-pr-template-drops-approval-checklist",
+      "bad-labeler-drops-anki-factory-path"
+    ]
+  },
+  "card_quality_cases": [
+    {
+      "id": "good-natural-table-cloze",
+      "description": "A useful synthetic table cloze with standardized fields and natural tutor tone should pass without warnings.",
+      "fixture": "fixtures/good-natural-table-cloze.card-candidates.json",
+      "expect_ok": true,
+      "expect_no_warnings": true,
+      "required_error_codes": [],
+      "required_warning_codes": []
+    },
+    {
+      "id": "bad-metadata-and-awkward-tone",
+      "description": "Learner-visible metadata plus awkward AI phrasing should be caught.",
+      "fixture": "fixtures/bad-metadata-and-awkward-tone.card-candidates.json",
+      "expect_ok": false,
+      "required_error_codes": ["metadata_leaked_to_card_field"],
+      "required_warning_codes": ["ai_smell_pattern"]
+    },
+    {
+      "id": "bad-non-standard-note-type",
+      "description": "A change that introduces a non-standard note type should fail.",
+      "fixture": "fixtures/bad-non-standard-note-type.card-candidates.json",
+      "expect_ok": false,
+      "required_error_codes": ["unknown_note_type_key"],
+      "required_warning_codes": []
+    }
+  ],
+  "phrasing_regression_cases": [
+    {
+      "id": "phrasing-good-friendly-tutor",
+      "description": "A friendly tutor-style explanation should pass without AI-smell warnings.",
+      "fixture": "fixtures/phrasing-good-friendly-tutor.card-candidates.json",
+      "expect_ok": true,
+      "expect_no_warnings": true,
+      "required_error_codes": [],
+      "required_warning_codes": []
+    },
+    {
+      "id": "phrasing-bad-well-matches",
+      "description": "Awkward expressions like 'well matches', 'combination', and 'perspective' should be caught.",
+      "fixture": "fixtures/phrasing-bad-well-matches.card-candidates.json",
+      "expect_ok": true,
+      "required_error_codes": [],
+      "required_warning_codes": ["ai_smell_pattern"],
+      "required_warning_patterns": ["awkward_tutor_register"]
+    },
+    {
+      "id": "phrasing-bad-bundle-axis",
+      "description": "Expressions like bundle, axis, and enough-to-remember should be caught.",
+      "fixture": "fixtures/phrasing-bad-bundle-axis.card-candidates.json",
+      "expect_ok": true,
+      "required_error_codes": [],
+      "required_warning_codes": ["ai_smell_pattern"],
+      "required_warning_patterns": ["axis_phrase", "bundle_phrase", "awkward_tutor_register"]
+    },
+    {
+      "id": "phrasing-bad-directional-advice",
+      "description": "Directional advice like clue, think that way, and keep it there should be caught.",
+      "fixture": "fixtures/phrasing-bad-directional-advice.card-candidates.json",
+      "expect_ok": true,
+      "required_error_codes": [],
+      "required_warning_codes": ["ai_smell_pattern"],
+      "required_warning_patterns": ["awkward_directional_advice"]
+    },
+    {
+      "id": "phrasing-bad-stiff-report",
+      "description": "Repeated stiff plain-form report prose should be caught.",
+      "fixture": "fixtures/phrasing-bad-stiff-report.card-candidates.json",
+      "expect_ok": true,
+      "required_error_codes": [],
+      "required_warning_codes": ["stiff_plain_form_repetition"]
+    }
+  ],
+  "copilot_integration_cases": [
+    {
+      "id": "good-current-wiring",
+      "description": "The current public-safe Copilot wiring should pass integration validation.",
+      "expect_ok": true,
+      "mutations": []
+    },
+    {
+      "id": "bad-skill-removes-smoke-command",
+      "description": "A skill edit that stops exposing the shared smoke command should fail.",
+      "expect_ok": false,
+      "required_message_fragments": ["Skill must expose the smoke command"],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/skills/anki-factory-quality/SKILL.md",
+          "old": ".github/skills/anki-factory-quality/scripts/run-smoke.sh",
+          "new": "python3 tools/anki-factory/scripts/validate_public_fixtures.py"
+        }
+      ]
+    },
+    {
+      "id": "bad-ci-drops-hook-path",
+      "description": "A workflow edit that no longer watches hook scripts should fail.",
+      "expect_ok": false,
+      "required_message_fragments": ["CI path filter must include .github/hooks/anki-factory-*.sh"],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/workflows/anki-factory-ci.yml",
+          "old": "      - \".github/hooks/anki-factory-*.sh\"\n",
+          "new": ""
+        }
+      ]
+    },
+    {
+      "id": "bad-public-doc-private-path",
+      "description": "A public Copilot-facing doc that leaks a local path should fail.",
+      "expect_ok": false,
+      "required_message_fragments": ["Public Copilot files contain private boundary leaks"],
+      "mutations": [
+        {
+          "op": "append",
+          "path": "docs/anki-factory/copilot-operation.md",
+          "text_parts": ["\nDebug note: /", "Users", "/example/private-source.apkg\n"]
+        }
+      ]
+    },
+    {
+      "id": "bad-smoke-drops-agent-evals",
+      "description": "A smoke script edit that removes agent eval execution should fail.",
+      "expect_ok": false,
+      "required_message_fragments": ["Smoke command must run agent evals"],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/skills/anki-factory-quality/scripts/run-smoke.sh",
+          "old": "python3 tools/anki-factory/scripts/run_agent_evals.py >\"$agent_eval_report\"\n",
+          "new": ""
+        }
+      ]
+    },
+    {
+      "id": "bad-agent-drops-eval-policy",
+      "description": "A custom agent edit that stops requiring agent evals should fail.",
+      "expect_ok": false,
+      "required_message_fragments": [
+        "Custom agent must require agent evals in validation and eval policy"
+      ],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/agents/anki-factory-maintainer.agent.md",
+          "old": "tools/anki-factory/scripts/run_agent_evals.py",
+          "new": "optional local eval checks"
+        }
+      ]
+    },
+    {
+      "id": "bad-instruction-over-budget",
+      "description": "Instruction files that exceed the budget should fail.",
+      "expect_ok": false,
+      "required_message_fragments": ["Instruction file exceeds budget"],
+      "mutations": [
+        {
+          "op": "append_repeat",
+          "path": ".github/copilot-instructions.md",
+          "text": "\nExtra low-signal filler instruction.",
+          "count": 100
+        }
+      ]
+    },
+    {
+      "id": "bad-instruction-marker-removed",
+      "description": "Removing a core rule marker from instructions should fail.",
+      "expect_ok": false,
+      "required_message_fragments": [
+        "Repository Copilot instructions must mention 'Privacy Boundary'"
+      ],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/copilot-instructions.md",
+          "old": "Privacy Boundary",
+          "new": "Boundary Notes"
+        }
+      ]
+    },
+    {
+      "id": "bad-ci-drops-artifact-upload",
+      "description": "A workflow edit that stops preserving the smoke report artifact should fail.",
+      "expect_ok": false,
+      "required_message_fragments": ["CI workflow must upload the smoke report artifact"],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/workflows/anki-factory-ci.yml",
+          "old": "        uses: actions/upload-artifact@v4\n",
+          "new": "        run: echo smoke report upload skipped\n"
+        }
+      ]
+    },
+    {
+      "id": "bad-pr-template-drops-approval-checklist",
+      "description": "A PR template edit that removes approval evidence should fail.",
+      "expect_ok": false,
+      "required_message_fragments": [
+        "PR template must include Anki Factory checklist term 'approval_id'"
+      ],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/pull_request_template.md",
+          "old": " and `approval_id`",
+          "new": ""
+        }
+      ]
+    },
+    {
+      "id": "bad-labeler-drops-anki-factory-path",
+      "description": "A labeler edit that stops labeling Anki Factory paths should fail.",
+      "expect_ok": false,
+      "required_message_fragments": [
+        "Labeler must include Anki Factory path term 'tools/anki-factory/**'"
+      ],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/labeler.yml",
+          "old": "          - \"tools/anki-factory/**\"\n",
+          "new": ""
+        }
+      ]
+    }
+  ]
+}

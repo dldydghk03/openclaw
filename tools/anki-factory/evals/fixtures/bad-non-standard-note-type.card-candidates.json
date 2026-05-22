@@ -1,0 +1,21 @@
+[
+  {
+    "candidate_id": "eval-bad-note-type-001",
+    "note_type_key": "default_basic",
+    "fields": {
+      "Front": "새 note type 예시",
+      "Back": "표준화 note type을 쓰지 않은 잘못된 변경입니다."
+    },
+    "deck_path": "01. JBL 개념 흐름",
+    "source_refs": [
+      {
+        "source_type": "lecture",
+        "locator": "synthetic://eval/bad-note-type#1"
+      }
+    ],
+    "learning_intent": "비표준 note type 생성을 막는다.",
+    "likely_confusion": "Anki 기본 Basic을 써도 된다고 생각하는 것",
+    "exam_relevance": "형식 회귀 검사용",
+    "tags": ["synthetic", "eval", "bad-change"]
+  }
+]

@@ -135,6 +135,18 @@ Attach at least one:
 - [ ] Screenshot/recording
 - [ ] Perf numbers (if relevant)
 
+## Anki Factory / Workflow Gate Evidence
+
+Complete this section when the PR touches `tools/anki-factory/**`, `docs/anki-factory/**`, Copilot instructions, hooks, CI, approval gates, exports, migrations, external writes, or workflow prompts. Otherwise check `Not applicable`.
+
+- [ ] Not applicable
+- [ ] Preview artifact or synthetic preview fixture is identified.
+- [ ] Approval path is preserved, including `preview_file` and `approval_id` when apply/export is possible.
+- [ ] Post-apply or post-export read-back is preserved when apply/export is possible.
+- [ ] `.github/skills/anki-factory-quality/scripts/run-smoke.sh` was run, and the unified JSON report is attached or summarized.
+- [ ] New or changed quality rule includes a synthetic good/bad eval or a clear reason why no eval changed.
+- [ ] No private lecture notes, APKG source decks, recovered exam text, screenshots, Drive exports, local paths, or run outputs are included.
+
 ## Human Verification (required)
 
 What you personally verified (not just CI), and how:

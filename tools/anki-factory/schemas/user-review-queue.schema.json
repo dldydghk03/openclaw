@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.local/anki-agent/user-review-queue.schema.json",
+  "title": "Anki Factory User Review Queue",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["queue_id", "run_id", "created_at", "items"],
+  "properties": {
+    "queue_id": {
+      "type": "string",
+      "minLength": 3
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 3
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["candidate_id", "reason", "recommended_decisions", "fields_preview"],
+        "properties": {
+          "candidate_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "recommended_decisions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["keep", "rewrite", "delete", "split", "merge"]
+            },
+            "minItems": 1
+          },
+          "fields_preview": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "scores": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    }
+  }
+}

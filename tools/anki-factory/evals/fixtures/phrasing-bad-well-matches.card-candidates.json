@@ -1,0 +1,21 @@
+[
+  {
+    "candidate_id": "eval-phrasing-bad-well-matches-001",
+    "note_type_key": "standard_basic",
+    "fields": {
+      "Front": "증상 있는 전해질 이상",
+      "Back": "이 조합이면 심전도가 더 잘 맞습니다. 원인 평가는 뒤쪽 관점에서 보면 됩니다."
+    },
+    "deck_path": "01. JBL 개념 흐름",
+    "source_refs": [
+      {
+        "source_type": "lecture",
+        "locator": "synthetic://eval/phrasing-bad-well-matches#1"
+      }
+    ],
+    "learning_intent": "어색한 해설자 표현을 잡는다.",
+    "likely_confusion": "일상 설명 대신 기계적인 판단 문구를 쓰는 것",
+    "exam_relevance": "말투 회귀 검사용",
+    "tags": ["synthetic", "eval", "phrasing", "bad-change"]
+  }
+]

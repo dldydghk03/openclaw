@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": ".github/hooks/anki-factory-smoke.sh",
+        "timeoutSec": 60
+      }
+    ]
+  }
+}

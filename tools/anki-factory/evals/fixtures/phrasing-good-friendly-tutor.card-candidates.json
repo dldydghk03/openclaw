@@ -1,0 +1,21 @@
+[
+  {
+    "candidate_id": "eval-phrasing-good-001",
+    "note_type_key": "standard_basic",
+    "fields": {
+      "Front": "고칼륨혈증: 응급 확인",
+      "Back": "증상이 있거나 수치가 많이 올라가 있으면 심전도를 확인합니다. 심전도 변화가 있으면 치료가 바로 필요하기 때문에, 원인 평가는 그 다음으로 넘겨도 됩니다."
+    },
+    "deck_path": "01. JBL 개념 흐름",
+    "source_refs": [
+      {
+        "source_type": "lecture",
+        "locator": "synthetic://eval/phrasing-good#1"
+      }
+    ],
+    "learning_intent": "응급 확인과 원인 평가 순서를 자연스럽게 이해한다.",
+    "likely_confusion": "원인 평가를 응급 확인보다 앞에 두는 것",
+    "exam_relevance": "치료 우선순위를 묻는 보기에서 헷갈리지 않게 한다.",
+    "tags": ["synthetic", "eval", "phrasing", "good-change"]
+  }
+]
