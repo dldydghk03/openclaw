@@ -46,6 +46,8 @@ Run the public smoke check:
 .github/skills/anki-factory-quality/scripts/run-smoke.sh
 ```
 
+The command emits one JSON object with `fixture_gate` and `copilot_integration_gate` sections so CI, hooks, and agents can parse the same report.
+
 ## Review Checklist
 
 - Did the change add synthetic positive and negative coverage?
