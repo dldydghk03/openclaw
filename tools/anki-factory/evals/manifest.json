@@ -2,10 +2,10 @@
   "version": "0.1.0",
   "purpose": "Public-safe eval set for distinguishing good and bad Anki Factory agent changes.",
   "coverage_requirements": {
-    "min_total_cases": 16,
+    "min_total_cases": 19,
     "min_card_quality_cases": 3,
     "min_phrasing_regression_cases": 5,
-    "min_copilot_integration_cases": 8,
+    "min_copilot_integration_cases": 11,
     "required_case_ids": [
       "good-natural-table-cloze",
       "bad-metadata-and-awkward-tone",
@@ -22,7 +22,10 @@
       "bad-smoke-drops-agent-evals",
       "bad-agent-drops-eval-policy",
       "bad-instruction-over-budget",
-      "bad-instruction-marker-removed"
+      "bad-instruction-marker-removed",
+      "bad-ci-drops-artifact-upload",
+      "bad-pr-template-drops-approval-checklist",
+      "bad-labeler-drops-anki-factory-path"
     ]
   },
   "card_quality_cases": [
@@ -203,6 +206,52 @@
           "path": ".github/copilot-instructions.md",
           "old": "Privacy Boundary",
           "new": "Boundary Notes"
+        }
+      ]
+    },
+    {
+      "id": "bad-ci-drops-artifact-upload",
+      "description": "A workflow edit that stops preserving the smoke report artifact should fail.",
+      "expect_ok": false,
+      "required_message_fragments": ["CI workflow must upload the smoke report artifact"],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/workflows/anki-factory-ci.yml",
+          "old": "        uses: actions/upload-artifact@v4\n",
+          "new": "        run: echo smoke report upload skipped\n"
+        }
+      ]
+    },
+    {
+      "id": "bad-pr-template-drops-approval-checklist",
+      "description": "A PR template edit that removes approval evidence should fail.",
+      "expect_ok": false,
+      "required_message_fragments": [
+        "PR template must include Anki Factory checklist term 'approval_id'"
+      ],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/pull_request_template.md",
+          "old": " and `approval_id`",
+          "new": ""
+        }
+      ]
+    },
+    {
+      "id": "bad-labeler-drops-anki-factory-path",
+      "description": "A labeler edit that stops labeling Anki Factory paths should fail.",
+      "expect_ok": false,
+      "required_message_fragments": [
+        "Labeler must include Anki Factory path term 'tools/anki-factory/**'"
+      ],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/labeler.yml",
+          "old": "          - \"tools/anki-factory/**\"\n",
+          "new": ""
         }
       ]
     }

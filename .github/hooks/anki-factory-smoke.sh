@@ -11,6 +11,11 @@ changed_files="$(
       .github/copilot-instructions.md \
       .github/instructions/anki-factory.instructions.md \
       .github/agents/anki-factory-maintainer.agent.md \
+      .github/ISSUE_TEMPLATE/anki_factory_improvement.yml \
+      .github/ISSUE_TEMPLATE/deck_quality_regression.yml \
+      .github/ISSUE_TEMPLATE/workflow_gate_change.yml \
+      .github/labeler.yml \
+      .github/pull_request_template.md \
       .github/skills/anki-factory-quality \
       .github/hooks/anki-factory-quality.json \
       .github/hooks/anki-factory-smoke.sh \
@@ -21,6 +26,11 @@ changed_files="$(
       .github/copilot-instructions.md \
       .github/instructions/anki-factory.instructions.md \
       .github/agents/anki-factory-maintainer.agent.md \
+      .github/ISSUE_TEMPLATE/anki_factory_improvement.yml \
+      .github/ISSUE_TEMPLATE/deck_quality_regression.yml \
+      .github/ISSUE_TEMPLATE/workflow_gate_change.yml \
+      .github/labeler.yml \
+      .github/pull_request_template.md \
       .github/skills/anki-factory-quality \
       .github/hooks/anki-factory-quality.json \
       .github/hooks/anki-factory-smoke.sh \

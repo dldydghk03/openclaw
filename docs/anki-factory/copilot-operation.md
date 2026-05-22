@@ -71,3 +71,25 @@ The local `output/hermes-codex-runtime/anki-agent/runs/**` directory can be used
 - Include a synthetic good fixture and a synthetic bad fixture when adding a rule.
 - Include the exact command used to validate fixtures.
 - Do not include generated APKGs or private decks.
+
+## GitHub Operating Loop
+
+Use GitHub as the public-safe maintenance queue for Anki Factory:
+
+- File an `Anki Factory improvement` issue for engine, schema, fixture, CI, hook, or documentation work.
+- File a `Deck quality regression` issue when private runs reveal a bad pattern, but reduce the finding to synthetic or redacted evidence before it enters GitHub.
+- File a `Workflow gate change` issue for preview, approval, export, read-back, external-write, migration, or cleanup safeguards.
+- Keep Copilot-ready work small enough for one deterministic fix plus one synthetic good/bad eval.
+
+## Required Evidence
+
+Every Anki Factory PR should preserve a review trail:
+
+- The PR checklist must state whether preview, approval, and read-back are applicable.
+- The smoke command must run before handoff.
+- The CI artifact `anki-factory-smoke-report` is the public-safe review record.
+- `fixture_gate` shows standardized-card and public fixture health.
+- `copilot_integration_gate` shows GitHub instruction, hook, CI, and template wiring health.
+- `agent_eval_gate` shows whether known good and bad agent changes are still distinguished.
+
+The repository ruleset requires the `Public fixture gates` status check on the default branch so gate changes cannot merge without the public smoke path.

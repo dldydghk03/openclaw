@@ -19,6 +19,11 @@ REQUIRED_FILES = [
     ".github/copilot-instructions.md",
     ".github/instructions/anki-factory.instructions.md",
     ".github/agents/anki-factory-maintainer.agent.md",
+    ".github/ISSUE_TEMPLATE/anki_factory_improvement.yml",
+    ".github/ISSUE_TEMPLATE/deck_quality_regression.yml",
+    ".github/ISSUE_TEMPLATE/workflow_gate_change.yml",
+    ".github/labeler.yml",
+    ".github/pull_request_template.md",
     ".github/skills/anki-factory-quality/SKILL.md",
     ".github/hooks/anki-factory-quality.json",
     ".github/hooks/anki-factory-smoke.sh",
@@ -45,6 +50,11 @@ EXPECTED_PATH_GLOBS = [
     ".github/copilot-instructions.md",
     ".github/instructions/anki-factory.instructions.md",
     ".github/agents/anki-factory-maintainer.agent.md",
+    ".github/ISSUE_TEMPLATE/anki_factory_improvement.yml",
+    ".github/ISSUE_TEMPLATE/deck_quality_regression.yml",
+    ".github/ISSUE_TEMPLATE/workflow_gate_change.yml",
+    ".github/labeler.yml",
+    ".github/pull_request_template.md",
     ".github/skills/anki-factory-quality/**",
     ".github/hooks/anki-factory-*.json",
     ".github/hooks/anki-factory-*.sh",
@@ -190,12 +200,68 @@ def validate_hook_and_ci() -> None:
     workflow = read(".github/workflows/anki-factory-ci.yml")
     require(SMOKE_COMMAND in workflow, "CI workflow must run the same smoke command")
     require("pull_request:" in workflow and "workflow_dispatch:" in workflow, "CI workflow must support PR and manual runs")
+    require("set -o pipefail" in workflow, "CI workflow must fail when smoke fails through tee")
+    require("actions/upload-artifact@v4" in workflow, "CI workflow must upload the smoke report artifact")
+    require("anki-factory-smoke-report" in workflow, "CI workflow must name the smoke report artifact")
+    require("$GITHUB_STEP_SUMMARY" in workflow, "CI workflow must publish the smoke report summary")
+    require("anki-factory-ci-artifacts/smoke-report.json" in workflow, "CI workflow must persist the smoke report JSON")
     for glob in EXPECTED_PATH_GLOBS:
         require(workflow.count(glob) >= 2, f"CI path filter must include {glob} for pull_request and push")
 
     smoke_script = read(SMOKE_COMMAND)
     require(AGENT_EVAL_COMMAND in smoke_script, "Smoke command must run agent evals")
     require(AGENT_EVAL_GATE in smoke_script, "Smoke command must emit agent_eval_gate")
+
+
+def validate_issue_templates_and_pr_checklist() -> None:
+    issue_templates = {
+        ".github/ISSUE_TEMPLATE/anki_factory_improvement.yml": [
+            "Anki Factory improvement",
+            "Public-safe boundary",
+            "synthetic examples",
+            SMOKE_COMMAND,
+            "copilot-ready",
+        ],
+        ".github/ISSUE_TEMPLATE/deck_quality_regression.yml": [
+            "Deck quality regression",
+            "Synthetic or redacted example",
+            "Gate or eval expectation",
+            "No private source deck",
+            "deck-quality",
+        ],
+        ".github/ISSUE_TEMPLATE/workflow_gate_change.yml": [
+            "Workflow gate change",
+            "preview",
+            "approval",
+            "read-back",
+            "fails closed",
+        ],
+    }
+    for path, required_terms in issue_templates.items():
+        text = read(path)
+        for term in required_terms:
+            require(term in text, f"Issue template {path} must include {term!r}")
+
+    pr_template = read(".github/pull_request_template.md")
+    for term in [
+        "Anki Factory / Workflow Gate Evidence",
+        "preview_file",
+        "approval_id",
+        "read-back",
+        SMOKE_COMMAND,
+        "No private lecture notes",
+    ]:
+        require(term in pr_template, f"PR template must include Anki Factory checklist term {term!r}")
+
+    labeler = read(".github/labeler.yml")
+    for term in [
+        '"anki-factory"',
+        "tools/anki-factory/**",
+        "docs/anki-factory/**",
+        ".github/ISSUE_TEMPLATE/anki_factory_improvement.yml",
+        ".github/pull_request_template.md",
+    ]:
+        require(term in labeler, f"Labeler must include Anki Factory path term {term!r}")
 
 
 def validate_public_boundary_terms() -> None:
@@ -230,6 +296,7 @@ def main() -> int:
         validate_instruction_budget,
         validate_agent_and_skill,
         validate_hook_and_ci,
+        validate_issue_templates_and_pr_checklist,
         validate_public_boundary_terms,
     ]
     completed: list[str] = []
