@@ -1,0 +1,21 @@
+[
+  {
+    "candidate_id": "eval-phrasing-bad-stiff-001",
+    "note_type_key": "standard_basic",
+    "fields": {
+      "Front": "임신 중 혈압 상승",
+      "Back": "임신 중 혈압 상승은 평가 대상이다. 단백뇨는 확인 대상이다. 태아 상태도 평가 대상이다. 치료는 단계적으로 결정된다. 분만 여부는 중증도에 따라 결정된다. 추적 관찰은 중요하다."
+    },
+    "deck_path": "01. JBL 개념 흐름",
+    "source_refs": [
+      {
+        "source_type": "lecture",
+        "locator": "synthetic://eval/phrasing-bad-stiff#1"
+      }
+    ],
+    "learning_intent": "한다/된다 반복으로 보고서처럼 보이는 문장을 잡는다.",
+    "likely_confusion": "친절한 설명이 아니라 요약문처럼 쓰는 것",
+    "exam_relevance": "말투 회귀 검사용",
+    "tags": ["synthetic", "eval", "phrasing", "bad-change"]
+  }
+]

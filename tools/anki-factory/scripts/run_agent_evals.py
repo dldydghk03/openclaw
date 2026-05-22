@@ -35,6 +35,10 @@ def code_set(items: list[dict[str, Any]]) -> set[str]:
     return {str(item.get("code")) for item in items}
 
 
+def pattern_set(items: list[dict[str, Any]]) -> set[str]:
+    return {str(item.get("pattern")) for item in items if item.get("pattern")}
+
+
 def read_json(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
@@ -42,18 +46,22 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def validate_manifest_coverage(manifest: dict[str, Any]) -> dict[str, Any]:
     card_cases = manifest.get("card_quality_cases", [])
+    phrasing_cases = manifest.get("phrasing_regression_cases", [])
     integration_cases = manifest.get("copilot_integration_cases", [])
-    all_cases = [*card_cases, *integration_cases]
+    all_cases = [*card_cases, *phrasing_cases, *integration_cases]
     requirements = manifest.get("coverage_requirements", {})
     failures: list[str] = []
 
     min_total = int(requirements.get("min_total_cases", 0))
     min_card = int(requirements.get("min_card_quality_cases", 0))
+    min_phrasing = int(requirements.get("min_phrasing_regression_cases", 0))
     min_integration = int(requirements.get("min_copilot_integration_cases", 0))
     if len(all_cases) < min_total:
         failures.append(f"case count below min_total_cases: {len(all_cases)} < {min_total}")
     if len(card_cases) < min_card:
         failures.append(f"card_quality_cases below minimum: {len(card_cases)} < {min_card}")
+    if len(phrasing_cases) < min_phrasing:
+        failures.append(f"phrasing_regression_cases below minimum: {len(phrasing_cases)} < {min_phrasing}")
     if len(integration_cases) < min_integration:
         failures.append(f"copilot_integration_cases below minimum: {len(integration_cases)} < {min_integration}")
 
@@ -70,8 +78,9 @@ def validate_manifest_coverage(manifest: dict[str, Any]) -> dict[str, Any]:
         if case.get("expect_ok") is False:
             has_required_error = bool(case.get("required_error_codes"))
             has_required_warning = bool(case.get("required_warning_codes"))
+            has_required_pattern = bool(case.get("required_warning_patterns"))
             has_required_message = bool(case.get("required_message_fragments"))
-            if not (has_required_error or has_required_warning or has_required_message):
+            if not (has_required_error or has_required_warning or has_required_pattern or has_required_message):
                 failures.append(f"bad-change eval lacks required assertions: {case.get('id')}")
 
     return {
@@ -80,6 +89,7 @@ def validate_manifest_coverage(manifest: dict[str, Any]) -> dict[str, Any]:
         "observed": {
             "total_cases": len(all_cases),
             "card_quality_cases": len(card_cases),
+            "phrasing_regression_cases": len(phrasing_cases),
             "copilot_integration_cases": len(integration_cases),
             "required_case_ids": requirements.get("required_case_ids", []),
         },
@@ -96,11 +106,12 @@ def case_result(case: dict[str, Any], passed: bool, observed: dict[str, Any], fa
     }
 
 
-def eval_card_quality_case(case: dict[str, Any], contract: dict[str, Any]) -> dict[str, Any]:
+def eval_card_quality_case(case: dict[str, Any], contract: dict[str, Any], kind: str = "card_quality") -> dict[str, Any]:
     fixture_path = EVAL_ROOT / str(case["fixture"])
     report = validate_cards(fixture_path, contract)
     errors = code_set(report["errors"])
     warnings = code_set(report["warnings"])
+    warning_patterns = pattern_set(report["warnings"])
     failures: list[str] = []
 
     expected_ok = bool(case.get("expect_ok"))
@@ -113,6 +124,9 @@ def eval_card_quality_case(case: dict[str, Any], contract: dict[str, Any]) -> di
     for code in case.get("required_warning_codes", []):
         if code not in warnings:
             failures.append(f"missing required warning code: {code}")
+    for pattern in case.get("required_warning_patterns", []):
+        if pattern not in warning_patterns:
+            failures.append(f"missing required warning pattern: {pattern}")
     if case.get("expect_no_warnings") and warnings:
         failures.append(f"expected no warnings, got {sorted(warnings)}")
 
@@ -120,9 +134,10 @@ def eval_card_quality_case(case: dict[str, Any], contract: dict[str, Any]) -> di
         "ok": report["ok"],
         "errors": sorted(errors),
         "warnings": sorted(warnings),
+        "warning_patterns": sorted(warning_patterns),
         "candidate_count": report["metrics"]["candidate_count"],
     }
-    return case_result({**case, "kind": "card_quality"}, not failures, observed, failures)
+    return case_result({**case, "kind": kind}, not failures, observed, failures)
 
 
 def copy_file(src_root: Path, dst_root: Path, relative_path: str) -> None:
@@ -165,6 +180,9 @@ def apply_mutation(temp_root: Path, mutation: dict[str, Any]) -> None:
         if "text_parts" in mutation:
             append_text = "".join(str(part) for part in mutation["text_parts"])
         target.write_text(text + append_text, encoding="utf-8")
+        return
+    if op == "append_repeat":
+        target.write_text(text + str(mutation["text"]) * int(mutation["count"]), encoding="utf-8")
         return
     raise AssertionError(f"unknown mutation op: {op}")
 
@@ -213,6 +231,8 @@ def main() -> int:
 
     for case in manifest.get("card_quality_cases", []):
         results.append(eval_card_quality_case(case, contract))
+    for case in manifest.get("phrasing_regression_cases", []):
+        results.append(eval_card_quality_case(case, contract, kind="phrasing_regression"))
     for case in manifest.get("copilot_integration_cases", []):
         results.append(eval_copilot_integration_case(case))
 

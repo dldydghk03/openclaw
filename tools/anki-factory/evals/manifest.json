@@ -2,19 +2,27 @@
   "version": "0.1.0",
   "purpose": "Public-safe eval set for distinguishing good and bad Anki Factory agent changes.",
   "coverage_requirements": {
-    "min_total_cases": 9,
+    "min_total_cases": 16,
     "min_card_quality_cases": 3,
-    "min_copilot_integration_cases": 6,
+    "min_phrasing_regression_cases": 5,
+    "min_copilot_integration_cases": 8,
     "required_case_ids": [
       "good-natural-table-cloze",
       "bad-metadata-and-awkward-tone",
       "bad-non-standard-note-type",
+      "phrasing-good-friendly-tutor",
+      "phrasing-bad-well-matches",
+      "phrasing-bad-bundle-axis",
+      "phrasing-bad-directional-advice",
+      "phrasing-bad-stiff-report",
       "good-current-wiring",
       "bad-skill-removes-smoke-command",
       "bad-ci-drops-hook-path",
       "bad-public-doc-private-path",
       "bad-smoke-drops-agent-evals",
-      "bad-agent-drops-eval-policy"
+      "bad-agent-drops-eval-policy",
+      "bad-instruction-over-budget",
+      "bad-instruction-marker-removed"
     ]
   },
   "card_quality_cases": [
@@ -42,6 +50,52 @@
       "expect_ok": false,
       "required_error_codes": ["unknown_note_type_key"],
       "required_warning_codes": []
+    }
+  ],
+  "phrasing_regression_cases": [
+    {
+      "id": "phrasing-good-friendly-tutor",
+      "description": "A friendly tutor-style explanation should pass without AI-smell warnings.",
+      "fixture": "fixtures/phrasing-good-friendly-tutor.card-candidates.json",
+      "expect_ok": true,
+      "expect_no_warnings": true,
+      "required_error_codes": [],
+      "required_warning_codes": []
+    },
+    {
+      "id": "phrasing-bad-well-matches",
+      "description": "Awkward expressions like 'well matches', 'combination', and 'perspective' should be caught.",
+      "fixture": "fixtures/phrasing-bad-well-matches.card-candidates.json",
+      "expect_ok": true,
+      "required_error_codes": [],
+      "required_warning_codes": ["ai_smell_pattern"],
+      "required_warning_patterns": ["awkward_tutor_register"]
+    },
+    {
+      "id": "phrasing-bad-bundle-axis",
+      "description": "Expressions like bundle, axis, and enough-to-remember should be caught.",
+      "fixture": "fixtures/phrasing-bad-bundle-axis.card-candidates.json",
+      "expect_ok": true,
+      "required_error_codes": [],
+      "required_warning_codes": ["ai_smell_pattern"],
+      "required_warning_patterns": ["axis_phrase", "bundle_phrase", "awkward_tutor_register"]
+    },
+    {
+      "id": "phrasing-bad-directional-advice",
+      "description": "Directional advice like clue, think that way, and keep it there should be caught.",
+      "fixture": "fixtures/phrasing-bad-directional-advice.card-candidates.json",
+      "expect_ok": true,
+      "required_error_codes": [],
+      "required_warning_codes": ["ai_smell_pattern"],
+      "required_warning_patterns": ["awkward_directional_advice"]
+    },
+    {
+      "id": "phrasing-bad-stiff-report",
+      "description": "Repeated stiff plain-form report prose should be caught.",
+      "fixture": "fixtures/phrasing-bad-stiff-report.card-candidates.json",
+      "expect_ok": true,
+      "required_error_codes": [],
+      "required_warning_codes": ["stiff_plain_form_repetition"]
     }
   ],
   "copilot_integration_cases": [
@@ -119,6 +173,36 @@
           "path": ".github/agents/anki-factory-maintainer.agent.md",
           "old": "tools/anki-factory/scripts/run_agent_evals.py",
           "new": "optional local eval checks"
+        }
+      ]
+    },
+    {
+      "id": "bad-instruction-over-budget",
+      "description": "Instruction files that exceed the budget should fail.",
+      "expect_ok": false,
+      "required_message_fragments": ["Instruction file exceeds budget"],
+      "mutations": [
+        {
+          "op": "append_repeat",
+          "path": ".github/copilot-instructions.md",
+          "text": "\nExtra low-signal filler instruction.",
+          "count": 100
+        }
+      ]
+    },
+    {
+      "id": "bad-instruction-marker-removed",
+      "description": "Removing a core rule marker from instructions should fail.",
+      "expect_ok": false,
+      "required_message_fragments": [
+        "Repository Copilot instructions must mention 'Privacy Boundary'"
+      ],
+      "mutations": [
+        {
+          "op": "replace",
+          "path": ".github/copilot-instructions.md",
+          "old": "Privacy Boundary",
+          "new": "Boundary Notes"
         }
       ]
     }

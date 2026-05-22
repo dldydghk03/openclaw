@@ -12,6 +12,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 SMOKE_COMMAND = ".github/skills/anki-factory-quality/scripts/run-smoke.sh"
 AGENT_EVAL_COMMAND = "tools/anki-factory/scripts/run_agent_evals.py"
 AGENT_EVAL_GATE = "agent_eval_gate"
+INSTRUCTION_BUDGET_CHARS = 4000
+CORE_RULE_WINDOW_CHARS = 3500
 
 REQUIRED_FILES = [
     ".github/copilot-instructions.md",
@@ -48,6 +50,33 @@ EXPECTED_PATH_GLOBS = [
     ".github/hooks/anki-factory-*.sh",
     ".github/workflows/anki-factory-ci.yml",
 ]
+
+INSTRUCTION_BUDGET_FILES = {
+    ".github/copilot-instructions.md": [
+        "Privacy Boundary",
+        "Anki Factory Hard Rules",
+        "Public CI must use synthetic fixtures only",
+    ],
+    ".github/instructions/anki-factory.instructions.md": [
+        "Blockers",
+        "Any change that allows non-standard note types",
+        "Any public fixture or documentation",
+        "Expected Positive Pattern",
+    ],
+    ".github/agents/anki-factory-maintainer.agent.md": [
+        "Data Boundary",
+        "Required Validation",
+        AGENT_EVAL_COMMAND,
+        "Eval Policy",
+        "Do not remove or bypass",
+    ],
+    ".github/skills/anki-factory-quality/SKILL.md": [
+        "Not allowed:",
+        "Quality Rules",
+        AGENT_EVAL_COMMAND,
+        AGENT_EVAL_GATE,
+    ],
+}
 
 
 class ValidationError(AssertionError):
@@ -101,6 +130,22 @@ def validate_instruction_scope() -> None:
         "@표준화 뉴족보",
     ]:
         require(phrase in repo_instructions, f"Repository Copilot instructions must mention {phrase!r}")
+
+
+def validate_instruction_budget() -> None:
+    for path, markers in INSTRUCTION_BUDGET_FILES.items():
+        text = read(path)
+        require(
+            len(text) <= INSTRUCTION_BUDGET_CHARS,
+            f"Instruction file exceeds budget: {path} has {len(text)} chars > {INSTRUCTION_BUDGET_CHARS}",
+        )
+        for marker in markers:
+            index = text.find(marker)
+            require(index != -1, f"Instruction core marker missing from {path}: {marker}")
+            require(
+                index < CORE_RULE_WINDOW_CHARS,
+                f"Instruction core marker appears too late in {path}: {marker}",
+            )
 
 
 def validate_agent_and_skill() -> None:
@@ -182,6 +227,7 @@ def main() -> int:
     checks = [
         validate_required_files,
         validate_instruction_scope,
+        validate_instruction_budget,
         validate_agent_and_skill,
         validate_hook_and_ci,
         validate_public_boundary_terms,

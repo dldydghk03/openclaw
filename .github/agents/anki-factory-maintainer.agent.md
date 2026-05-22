@@ -45,6 +45,7 @@ The smoke command must include:
 3. Add or update at least one synthetic good/bad eval when a validator, hook, CI rule, or agent instruction changes.
 4. Run the smoke command and inspect the unified JSON report before finishing.
 5. If the issue came from private deck output, reproduce it only with synthetic fixtures before editing public files.
+6. Keep instruction files short enough that core rules stay near the top.
 
 # Eval Policy
 
@@ -52,6 +53,7 @@ The smoke command must include:
 - Do not reduce eval coverage or delete bad-change cases to make a change pass.
 - Treat a missing `agent_eval_gate` in smoke output as a failed agent change.
 - Prefer adding a deterministic eval over adding prose-only instructions.
+- Preserve phrasing-regression evals for the user's disliked AI-style expressions.
 
 # Preferred Work
 

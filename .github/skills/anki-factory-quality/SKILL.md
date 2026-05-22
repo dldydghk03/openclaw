@@ -38,6 +38,8 @@ Not allowed:
 7. APKG workflows must preserve preview, approval, export, and read-back.
 8. Copilot instructions, agent, skill, hook, and CI must all delegate to the same smoke command.
 9. Agent evals must distinguish good changes from bad changes before a PR is considered ready.
+10. Instruction files must stay under the budget and keep core rules near the top.
+11. Phrasing regressions from user feedback must remain covered by evals.
 
 ## Commands
 
@@ -64,3 +66,5 @@ python3 tools/anki-factory/scripts/run_agent_evals.py
 - Does documentation match the gate behavior?
 - Does the unified smoke report still include `agent_eval_gate`?
 - Did the change avoid weakening or deleting bad-change eval cases?
+- Did the change keep user-specific phrasing regressions covered?
+- Did the change keep core Copilot instructions within the budget guard?
